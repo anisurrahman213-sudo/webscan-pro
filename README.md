@@ -1,4 +1,4 @@
-# WebScan Pro v11.4
+# WebScan Pro v11.5
 
 **Professional Web Application Penetration Testing Scanner**
 
@@ -8,9 +8,9 @@
 
 ## Overview
 
-WebScan Pro is a comprehensive, single-file Python 3 scanner covering 57 security modules across OWASP Top 10 (2021), CWE, and CVSS v3.1 — built for professional security assessments. It generates structured HTML, JSON, PDF, and Burp Suite XML reports.
+WebScan Pro is a comprehensive, single-file Python 3 scanner covering **70 security modules** across OWASP Top 10 (2021), CWE, and CVSS v3.1 — built for professional security assessments. It generates 4 report types: HTML, JSON, PDF, and Expert Validation Report with per-finding manual verification commands.
 
-**57 modules · OWASP Top 10 (2021) · CVSS v3.1 · CWE · HTML + JSON + PDF + Burp XML · Parallel Execution · Built-in OSINT · Nikto/ZAP-style Checks**
+**70 modules · OWASP Top 10 (2021) · CVSS v3.1 · CWE · Confirmed vs Potential findings · HTML + JSON + PDF + Expert Validation · Parallel Execution · Built-in OSINT · CVE Mapping · WAF Bypass · Web Crawler · Cloud Scanner**
 
 ---
 
@@ -186,6 +186,26 @@ Use `--scope` with a comma-separated list of module keys to target specific chec
 | `info_disclosure` | Information Disclosure (stack trace, private IP, debug mode, PII) |
 | `zap_passive` | ZAP-style Passive Analysis (mixed content, autocomplete, cache, robots.txt) |
 
+### Phase 2e — New Modules v11.5 (Modules 58–71)
+
+| Key | Module |
+|-----|--------|
+| `crawler` | Web Crawler/Spider — discovers all URLs, forms, params |
+| `cloud_bucket` | Cloud Storage Exposure (S3, GCS, Azure Blob) |
+| `mass_assignment` | Mass Assignment — hidden field injection |
+| `acct_takeover` | Account Takeover — password reset flaws |
+| `redos` | ReDoS — RegEx Denial of Service patterns |
+| `clickjacking` | Clickjacking — X-Frame-Options / CSP frame-ancestors |
+| `jsonp_inject` | JSONP Injection — callback parameter manipulation |
+| `css_inject` | CSS Injection — style/expression injection |
+| `http2_vulns` | HTTP/2 Vulnerabilities — protocol-level checks |
+| `cve_scan` | CVE Mapping — technology stack → known CVEs (44 CVEs, 14 stacks) |
+| `s3_brute` | S3 Bucket Brute-Force — common bucket name guessing |
+| `wayback_urls` | Wayback / Archive URLs — historical endpoint discovery |
+| `param_discover` | Parameter Discovery — Arjun-style hidden param detection |
+| `race_condition` | Race Condition — synchronized concurrent request testing |
+| `waf_bypass` | WAF Bypass — obfuscated SQLi + XSS payloads |
+
 **Example — targeted scan:**
 ```bash
 webscan https://target.com --scope sqli,xss,jwt,cors,headers -y
@@ -198,16 +218,35 @@ webscan https://target.com --no-advanced -y
 
 ---
 
+## What's New in v11.5
+
+| Feature | Details |
+|---------|---------|
+| **70 Modules** | 13 new modules added (was 57) |
+| **Confirmed vs Potential** | Every finding is verified — CONFIRMED (actual evidence) or POTENTIAL (heuristic) |
+| **SQLi Baseline Timing** | Measures response time before injection — no false positives on slow servers |
+| **XSS Context Check** | Detects HTML-encoding — won't flag `&lt;script&gt;` as vulnerable |
+| **Web Crawler (M58)** | Spiders the entire target, discovers URLs/forms/params |
+| **Cloud Scanner (M59)** | Checks S3 / GCS / Azure Blob for public access |
+| **CVE Mapping (M67)** | Maps detected technologies to 44 known CVEs across 14 stacks |
+| **WAF Bypass (M68)** | Tests 15 SQLi + 10 XSS obfuscated payloads through WAF |
+| **Parameter Discovery (M70)** | Arjun-style: discovers hidden GET params via baseline comparison |
+| **Race Condition (M71)** | Synchronized concurrent requests using threading.Barrier |
+| **Wayback URLs (M66)** | Fetches historical URLs from Wayback Machine CDX API |
+| **Expert Validation Report** | 4th report: dark-themed HTML with manual verification commands per finding |
+
+---
+
 ## Output Files
 
-Every scan generates reports in `~/webscan-reports/` (or the path set with `-o`):
+Every scan generates 4 reports in `~/webscan-reports/` (or the path set with `-o`):
 
 | File | Description |
 |------|-------------|
-| `webscanpro_<timestamp>.html` | Full interactive HTML report |
+| `webscanpro_<timestamp>.html` | Full interactive HTML report (Confirmed/Potential split) |
 | `webscanpro_<timestamp>.json` | Machine-readable JSON (for `--compare`, CI/CD) |
 | `webscanpro_<timestamp>.pdf` | PDF export (requires `weasyprint`) |
-| `webscanpro_<timestamp>_burp.xml` | Burp Suite XML (requires `--burp`) |
+| `webscanpro_<timestamp>_expert.html` | **Expert Validation Report** — Critical/High only, manual verification commands |
 
 **PDF:** Auto-generated if `weasyprint` is installed. Install with:
 ```bash
@@ -262,7 +301,7 @@ webscan --compare ~/webscan-reports/scan_before.json ~/webscan-reports/scan_afte
 
 ```
 webscan-pro/
-├── webscan_pro.py    # Main scanner (~5,979 lines, single file)
+├── webscan_pro.py    # Main scanner (~7,950 lines, single file, 70 modules)
 ├── install.sh        # Kali Linux installer
 ├── wordlist.txt      # 575-entry directory wordlist
 └── README.md         # This file

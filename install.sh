@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-#  WebScan Pro v11.4 — Auto Installer for Kali Linux
+#  WebScan Pro v11.5 — Auto Installer for Kali Linux
 #  Usage: chmod +x install.sh && sudo bash install.sh
 # ============================================================
 
@@ -18,10 +18,10 @@ cat << 'EOF'
  |  _ \ _ __ ___
  | |_) | '__/ _ \
  |  __/| | | (_) |
- |_|   |_|  \___/   v11.4 Installer
+ |_|   |_|  \___/   v11.5 Installer
 EOF
 echo -e "${RESET}"
-echo -e "${CYAN}  WebScan Pro v11.4 — Kali Linux Installer${RESET}"
+echo -e "${CYAN}  WebScan Pro v11.5 — Kali Linux Installer${RESET}"
 echo -e "${WHITE}  ─────────────────────────────────────────${RESET}"
 
 # ── Root check ───────────────────────────────────────────────────
@@ -53,7 +53,7 @@ for pkg in $CORE_PKGS; do
 done
 
 echo -e "\n${CYAN}  [4/7] Installing optional Python packages...${RESET}"
-OPT_PKGS="beautifulsoup4 dnspython lxml weasyprint"
+OPT_PKGS="beautifulsoup4 dnspython lxml weasyprint tldextract"
 for pkg in $OPT_PKGS; do
     pip3 install "$pkg" --break-system-packages -q \
         && echo -e "${GREEN}  [✓] $pkg${RESET}" \
@@ -111,7 +111,7 @@ python3 -c "import weasyprint; print('  weasyprint OK')" 2>/dev/null \
 # ── Summary ──────────────────────────────────────────────────────
 echo -e ""
 echo -e "${WHITE}  ══════════════════════════════════════════════${RESET}"
-echo -e "${GREEN}  ✅  WebScan Pro v11.4 Installation Complete!${RESET}"
+echo -e "${GREEN}  ✅  WebScan Pro v11.5 Installation Complete!${RESET}"
 echo -e "${WHITE}  ══════════════════════════════════════════════${RESET}"
 echo -e ""
 echo -e "${CYAN}  Quick Start:${RESET}"

