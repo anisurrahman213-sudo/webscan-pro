@@ -1,4 +1,4 @@
-# WebScan Pro v11.2
+# WebScan Pro v11.4
 
 **Professional Web Application Penetration Testing Scanner**
 
@@ -8,9 +8,9 @@
 
 ## Overview
 
-WebScan Pro is a comprehensive, single-file Python 3 scanner covering 47 security modules across OWASP Top 10 (2021), CWE, and CVSS v3.1 — built for professional security assessments. It generates structured HTML, JSON, PDF, and Burp Suite XML reports.
+WebScan Pro is a comprehensive, single-file Python 3 scanner covering 57 security modules across OWASP Top 10 (2021), CWE, and CVSS v3.1 — built for professional security assessments. It generates structured HTML, JSON, PDF, and Burp Suite XML reports.
 
-**47 modules · OWASP Top 10 (2021) · CVSS v3.1 · CWE · HTML + JSON + PDF + Burp XML · Parallel Execution**
+**57 modules · OWASP Top 10 (2021) · CVSS v3.1 · CWE · HTML + JSON + PDF + Burp XML · Parallel Execution · Built-in OSINT · Nikto/ZAP-style Checks**
 
 ---
 
@@ -107,6 +107,17 @@ Use `--scope` with a comma-separated list of module keys to target specific chec
 | `ports` | Port Scan |
 | `subdomains` | Subdomain Enumeration |
 
+### Phase 1b — OSINT Intelligence (v11.3)
+
+| Key | Module |
+|-----|--------|
+| `osint_email` | Email Harvest (crt.sh, security.txt, mailto links) |
+| `osint_dns` | DNS Intelligence (SPF, DMARC, DKIM, MX) |
+| `osint_dorks` | Google Dork Generator (16 targeted dorks) |
+| `osint_breach` | Data Breach Check (HIBP, public pastes) |
+| `osint_github` | GitHub Exposure (unauthenticated code search) |
+| `osint_js` | JavaScript Secrets Scan (API keys, tokens, endpoints) |
+
 ### Phase 2 — Core Scanning
 
 | Key | Module |
@@ -165,6 +176,15 @@ Use `--scope` with a comma-separated list of module keys to target specific chec
 | `email_inject` | Email Header Injection |
 | `dep_confusion` | Dependency Confusion |
 | `dom_xss` | DOM-based XSS |
+
+### Phase 2d — Nikto/ZAP-style (v11.4)
+
+| Key | Module |
+|-----|--------|
+| `default_creds` | Default Credentials Scanner (WordPress, Tomcat, Jenkins, Grafana…) |
+| `srv_hardening` | Server Hardening & CGI (WebDAV, ShellShock, phpinfo, backup files) |
+| `info_disclosure` | Information Disclosure (stack trace, private IP, debug mode, PII) |
+| `zap_passive` | ZAP-style Passive Analysis (mixed content, autocomplete, cache, robots.txt) |
 
 **Example — targeted scan:**
 ```bash
@@ -242,7 +262,7 @@ webscan --compare ~/webscan-reports/scan_before.json ~/webscan-reports/scan_afte
 
 ```
 webscan-pro/
-├── webscan_pro.py    # Main scanner (~4,942 lines, single file)
+├── webscan_pro.py    # Main scanner (~5,979 lines, single file)
 ├── install.sh        # Kali Linux installer
 ├── wordlist.txt      # 575-entry directory wordlist
 └── README.md         # This file

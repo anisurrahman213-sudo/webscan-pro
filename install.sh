@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-#  WebScan Pro v11.2 — Auto Installer for Kali Linux
+#  WebScan Pro v11.4 — Auto Installer for Kali Linux
 #  Usage: chmod +x install.sh && sudo bash install.sh
 # ============================================================
 
@@ -18,10 +18,10 @@ cat << 'EOF'
  |  _ \ _ __ ___
  | |_) | '__/ _ \
  |  __/| | | (_) |
- |_|   |_|  \___/   v11.2 Installer
+ |_|   |_|  \___/   v11.4 Installer
 EOF
 echo -e "${RESET}"
-echo -e "${CYAN}  WebScan Pro v11.2 — Kali Linux Installer${RESET}"
+echo -e "${CYAN}  WebScan Pro v11.4 — Kali Linux Installer${RESET}"
 echo -e "${WHITE}  ─────────────────────────────────────────${RESET}"
 
 # ── Root check ───────────────────────────────────────────────────
@@ -111,7 +111,7 @@ python3 -c "import weasyprint; print('  weasyprint OK')" 2>/dev/null \
 # ── Summary ──────────────────────────────────────────────────────
 echo -e ""
 echo -e "${WHITE}  ══════════════════════════════════════════════${RESET}"
-echo -e "${GREEN}  ✅  WebScan Pro v11.2 Installation Complete!${RESET}"
+echo -e "${GREEN}  ✅  WebScan Pro v11.4 Installation Complete!${RESET}"
 echo -e "${WHITE}  ══════════════════════════════════════════════${RESET}"
 echo -e ""
 echo -e "${CYAN}  Quick Start:${RESET}"
