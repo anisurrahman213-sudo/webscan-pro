@@ -1,4 +1,4 @@
-# WebScan Pro v11.5
+# WebScan Pro v11.7
 
 **Professional Web Application Penetration Testing Scanner**
 
@@ -8,9 +8,9 @@
 
 ## Overview
 
-WebScan Pro is a comprehensive, single-file Python 3 scanner covering **70 security modules** across OWASP Top 10 (2021), CWE, and CVSS v3.1 — built for professional security assessments. It generates 4 report types: HTML, JSON, PDF, and Expert Validation Report with per-finding manual verification commands.
+WebScan Pro is a comprehensive, single-file Python 3 scanner covering **77 security modules** across OWASP Top 10 (2021), WSTG, ASVS v5.0, CWE, and CVSS v3.1 — built for professional security assessments. It generates 4 report types: HTML, JSON, PDF, and Expert Validation Report with per-finding manual verification commands.
 
-**70 modules · OWASP Top 10 (2021) · CVSS v3.1 · CWE · Confirmed vs Potential findings · HTML + JSON + PDF + Expert Validation · Parallel Execution · Built-in OSINT · CVE Mapping · WAF Bypass · Web Crawler · Cloud Scanner**
+**77 modules · OWASP Top 10 (2021) · WSTG + ASVS v5.0 Mapping · CVSS v3.1 · CWE · Confirmed vs Potential · HTML + JSON + PDF + Expert Validation · Parallel Execution · Built-in OSINT · CVE Mapping · WAF Bypass · Web Crawler · Cloud Scanner · CI/CD Integration**
 
 ---
 
@@ -58,6 +58,9 @@ webscan <URL> [options]
 | Filter by CVSS score | `webscan https://target.com --cvss 7.0 -y` |
 | Custom wordlist | `webscan https://target.com -w wordlist.txt -y` |
 | Custom output dir | `webscan https://target.com -o /path/to/reports -y` |
+| **CI/CD pipeline** | `webscan https://target.com -y --fail-on-severity high` |
+| **Credential stuffing** | `webscan https://target.com --combo creds.txt -y` |
+| **Password spray** | `webscan https://target.com --spray Password123 -y` |
 
 ---
 
@@ -90,6 +93,9 @@ webscan <URL> [options]
 | `--no-smuggling` | Skip HTTP request smuggling |
 | `--no-idor` | Skip IDOR checks |
 | `--no-advanced` | Skip all Phase 2b/2c advanced modules (faster scan) |
+| `--combo` | Credential combo file (user:pass per line) for login brute-force |
+| `--spray` | Single password to spray across common usernames |
+| `--fail-on-severity` | **CI/CD:** Exit code 1 if finding >= this severity (`critical`/`high`/`medium`/`low`) |
 | `--version` | Show version and exit |
 
 ---
@@ -107,7 +113,7 @@ Use `--scope` with a comma-separated list of module keys to target specific chec
 | `ports` | Port Scan |
 | `subdomains` | Subdomain Enumeration |
 
-### Phase 1b — OSINT Intelligence (v11.3)
+### Phase 1b — OSINT Intelligence
 
 | Key | Module |
 |-----|--------|
@@ -120,120 +126,121 @@ Use `--scope` with a comma-separated list of module keys to target specific chec
 
 ### Phase 2 — Core Scanning
 
-| Key | Module |
-|-----|--------|
-| `headers` | Security Headers |
-| `methods` | HTTP Methods |
-| `sqli` | SQL Injection |
-| `xss` | Reflected XSS |
-| `lfi` | Local File Inclusion |
-| `ssrf` | SSRF |
-| `xxe` | XXE Injection |
-| `redirect` | Open Redirect |
-| `cors` | CORS Misconfiguration |
-| `sensitive` | Sensitive File Exposure |
-| `dirs` | Directory Brute-Force |
-| `ssl` | SSL/TLS Analysis |
-| `tech` | Technology Fingerprint |
-| `cookies` | Cookie Security |
-| `csrf` | CSRF |
-| `privesc` | Privilege Escalation |
-| `ssti` | SSTI |
-| `cmdi` | Command Injection |
-| `jwt` | JWT Vulnerabilities |
-| `ratelimit` | Rate Limit Check |
-| `authn_bypass` | Authentication Bypass |
-| `graphql` | GraphQL Security |
-| `post_inject` | POST Injection |
-| `stored_xss` | Stored XSS |
-| `hostheader` | Host Header Injection |
-| `crlf` | CRLF Injection |
-| `idor` | IDOR |
-| `subdomain_takeover` | Subdomain Takeover |
-| `dns_axfr` | DNS Zone Transfer |
-| `smuggling` | HTTP Request Smuggling |
+| Key | Module | WSTG | ASVS |
+|-----|--------|------|------|
+| `headers` | Security Headers | WSTG-CONF-07 | ASVS-14.4.1 |
+| `sqli` | SQL Injection | WSTG-INPV-05 | ASVS-5.3.4 |
+| `xss` | Reflected XSS | WSTG-CLNT-01 | ASVS-5.3.3 |
+| `lfi` | Local File Inclusion | WSTG-ATHZ-01 | ASVS-5.3.12 |
+| `ssrf` | SSRF | WSTG-INPV-19 | ASVS-5.3.17 |
+| `xxe` | XXE Injection | WSTG-INPV-07 | ASVS-5.5.2 |
+| `cors` | CORS Misconfiguration | WSTG-CLNT-07 | ASVS-14.5.3 |
+| `csrf` | CSRF | WSTG-SESS-05 | ASVS-4.2.2 |
+| `redirect` | Open Redirect | WSTG-CLNT-04 | ASVS-5.1.5 |
+| `cookies` | Cookie Security | WSTG-SESS-02 | ASVS-3.4.1 |
+| `ssl` | SSL/TLS Analysis | WSTG-CRYP-01 | ASVS-9.1.1 |
+| `sensitive` | Sensitive File Exposure | WSTG-CONF-10 | ASVS-8.3.4 |
+| `methods` | HTTP Methods | WSTG-CONF-06 | ASVS-14.5.1 |
+| `tech` | Technology Fingerprint | WSTG-INFO-02 | ASVS-14.2.1 |
+| `ssti` | SSTI | WSTG-INPV-18 | ASVS-5.3.17 |
+| `cmdi` | Command Injection | WSTG-INPV-12 | ASVS-5.3.8 |
+| `jwt` | JWT Vulnerabilities | WSTG-SESS-10 | ASVS-3.5.3 |
+| `authn_bypass` | Authentication Bypass | WSTG-ATHN-01 | ASVS-2.1.1 |
+| `graphql` | GraphQL Security | WSTG-INPV-11 | ASVS-13.1.1 |
+| `stored_xss` | Stored XSS | WSTG-INPV-02 | ASVS-5.3.3 |
+| `hostheader` | Host Header Injection | WSTG-INPV-17 | ASVS-5.3.2 |
+| `crlf` | CRLF Injection | WSTG-INPV-15 | ASVS-5.3.2 |
+| `idor` | IDOR | WSTG-ATHZ-04 | ASVS-4.2.1 |
+| `smuggling` | HTTP Request Smuggling | WSTG-INPV-13 | ASVS-14.5.1 |
 
-### Phase 2b — Advanced (v10)
+### Phase 2b — Advanced
 
 | Key | Module |
 |-----|--------|
 | `oauth2` | OAuth 2.0 Flaws |
 | `hpp` | HTTP Parameter Pollution |
 | `cache_poison` | Cache Poisoning |
-| `proto_poll` | Prototype Pollution |
 | `deserial` | Deserialization |
 | `api_sec` | API Security / BOLA |
 | `biz_logic` | Business Logic Flaws |
 
-### Phase 2c — Advanced (v11)
+### Phase 2c — Advanced v11
 
 | Key | Module |
 |-----|--------|
 | `websocket` | WebSocket Security |
 | `saml` | SAML Misconfiguration |
 | `otp_bypass` | 2FA / OTP Bypass |
-| `path_norm` | Path Normalization |
-| `email_inject` | Email Header Injection |
-| `dep_confusion` | Dependency Confusion |
 | `dom_xss` | DOM-based XSS |
+| `email_inject` | Email Header Injection |
 
-### Phase 2d — Nikto/ZAP-style (v11.4)
-
-| Key | Module |
-|-----|--------|
-| `default_creds` | Default Credentials Scanner (WordPress, Tomcat, Jenkins, Grafana…) |
-| `srv_hardening` | Server Hardening & CGI (WebDAV, ShellShock, phpinfo, backup files) |
-| `info_disclosure` | Information Disclosure (stack trace, private IP, debug mode, PII) |
-| `zap_passive` | ZAP-style Passive Analysis (mixed content, autocomplete, cache, robots.txt) |
-
-### Phase 2e — New Modules v11.5 (Modules 58–71)
+### Phase 2d — Nikto/ZAP-style
 
 | Key | Module |
 |-----|--------|
-| `crawler` | Web Crawler/Spider — discovers all URLs, forms, params |
-| `cloud_bucket` | Cloud Storage Exposure (S3, GCS, Azure Blob) |
-| `mass_assignment` | Mass Assignment — hidden field injection |
-| `acct_takeover` | Account Takeover — password reset flaws |
-| `redos` | ReDoS — RegEx Denial of Service patterns |
-| `clickjacking` | Clickjacking — X-Frame-Options / CSP frame-ancestors |
-| `jsonp_inject` | JSONP Injection — callback parameter manipulation |
-| `css_inject` | CSS Injection — style/expression injection |
-| `http2_vulns` | HTTP/2 Vulnerabilities — protocol-level checks |
-| `cve_scan` | CVE Mapping — technology stack → known CVEs (44 CVEs, 14 stacks) |
-| `s3_brute` | S3 Bucket Brute-Force — common bucket name guessing |
-| `wayback_urls` | Wayback / Archive URLs — historical endpoint discovery |
-| `param_discover` | Parameter Discovery — Arjun-style hidden param detection |
-| `race_condition` | Race Condition — synchronized concurrent request testing |
-| `waf_bypass` | WAF Bypass — obfuscated SQLi + XSS payloads |
+| `default_creds` | Default Credentials Scanner |
+| `srv_hardening` | Server Hardening & CGI |
+| `info_disclosure` | Information Disclosure |
+| `zap_passive` | ZAP-style Passive Analysis |
+
+### Phase 2e — New Modules v11.5–v11.7
+
+| Key | Module | WSTG | ASVS |
+|-----|--------|------|------|
+| `crawler` | Web Crawler/Spider | WSTG-INFO-05 | ASVS-5.1.1 |
+| `cloud_bucket` | Cloud Storage Exposure (S3, GCS, Azure) | WSTG-CONF-10 | ASVS-14.2.3 |
+| `mass_assignment` | Mass Assignment | WSTG-ATHZ-01 | ASVS-4.2.1 |
+| `acct_takeover` | Account Takeover — password reset flaws | WSTG-ATHN-01 | ASVS-2.1.1 |
+| `redos` | ReDoS — RegEx Denial of Service | WSTG-BUSL-09 | ASVS-5.3.17 |
+| `clickjacking` | Clickjacking | WSTG-CLNT-09 | ASVS-14.4.7 |
+| `dom_xss` | DOM-based XSS | WSTG-CLNT-01 | ASVS-5.3.3 |
+| `cve_scan` | CVE Mapping (44 CVEs, 14 stacks) | WSTG-INFO-02 | ASVS-14.2.1 |
+| `s3_brute` | S3 Bucket Brute-Force | WSTG-CONF-10 | ASVS-14.2.3 |
+| `wayback_urls` | Wayback / Archive URLs | WSTG-INFO-01 | ASVS-8.3.4 |
+| `param_discover` | Parameter Discovery | WSTG-INFO-05 | ASVS-5.1.1 |
+| `race_condition` | Race Condition | WSTG-BUSL-09 | ASVS-11.1.6 |
+| `waf_bypass` | WAF Bypass | WSTG-CONF-07 | ASVS-14.4.1 |
+| **`nosql_inject`** | **NoSQL Injection (MongoDB $ne/$gt/$regex)** | **WSTG-INPV-01** | **ASVS-5.3.4** |
+| **`sspp`** | **Server-Side Prototype Pollution** | **WSTG-CLNT-10** | **ASVS-5.3.17** |
+| **`oob_blind`** | **OOB Blind SSRF/XXE (interactsh)** | **WSTG-INPV-19** | **ASVS-5.5.2** |
+| **`file_upload`** | **Malicious File Upload (RCE)** | **WSTG-BUSL-08** | **ASVS-12.2.1** |
+| **`postmessage`** | **PostMessage & Browser Storage** | **WSTG-CLNT-10** | **ASVS-5.3.3** |
+| **`acct_enum`** | **Account Enumeration** | **WSTG-IDNT-04** | **ASVS-2.7.1** |
+| **`login_brute`** | **Expert Login Brute-Force (L1–L4)** | **WSTG-ATHN-03** | **ASVS-2.2.1** |
 
 **Example — targeted scan:**
 ```bash
 webscan https://target.com --scope sqli,xss,jwt,cors,headers -y
 ```
 
-**Example — skip all advanced modules:**
+**Example — CI/CD pipeline (fail on high+critical):**
 ```bash
-webscan https://target.com --no-advanced -y
+webscan https://target.com -y --fail-on-severity high
+```
+
+**Example — credential stuffing + brute-force:**
+```bash
+webscan https://target.com --combo breached_creds.txt -y
+webscan https://target.com --spray "Summer2024!" -y
 ```
 
 ---
 
-## What's New in v11.5
+## What's New in v11.7
 
 | Feature | Details |
 |---------|---------|
-| **70 Modules** | 13 new modules added (was 57) |
-| **Confirmed vs Potential** | Every finding is verified — CONFIRMED (actual evidence) or POTENTIAL (heuristic) |
-| **SQLi Baseline Timing** | Measures response time before injection — no false positives on slow servers |
-| **XSS Context Check** | Detects HTML-encoding — won't flag `&lt;script&gt;` as vulnerable |
-| **Web Crawler (M58)** | Spiders the entire target, discovers URLs/forms/params |
-| **Cloud Scanner (M59)** | Checks S3 / GCS / Azure Blob for public access |
-| **CVE Mapping (M67)** | Maps detected technologies to 44 known CVEs across 14 stacks |
-| **WAF Bypass (M68)** | Tests 15 SQLi + 10 XSS obfuscated payloads through WAF |
-| **Parameter Discovery (M70)** | Arjun-style: discovers hidden GET params via baseline comparison |
-| **Race Condition (M71)** | Synchronized concurrent requests using threading.Barrier |
-| **Wayback URLs (M66)** | Fetches historical URLs from Wayback Machine CDX API |
-| **Expert Validation Report** | 4th report: dark-themed HTML with manual verification commands per finding |
+| **77 Modules** | 6 new modules added (was 71) |
+| **WSTG Mapping** | Every finding maps to OWASP Web Security Testing Guide ID (e.g. WSTG-INPV-05) |
+| **ASVS Mapping** | Every finding maps to ASVS v5.0 control ID (e.g. ASVS-5.3.4) |
+| **Code Snippets** | Remediation fields include fix examples and verification commands |
+| **NoSQL Injection (M73)** | MongoDB $ne/$gt/$regex operator auth bypass + GET param injection |
+| **Prototype Pollution (M74)** | SSPP via __proto__ / constructor.prototype POST to API endpoints |
+| **OOB Blind (M75)** | Out-of-band Blind SSRF (AWS/GCP/Azure metadata timing) + Blind XXE |
+| **File Upload (M76)** | PHP/JSP/ASPX shell upload, double extension, null byte, MIME bypass |
+| **PostMessage (M77)** | Cross-origin postMessage wildcard + localStorage sensitive data detection |
+| **Account Enumeration (M78)** | Different error messages for valid vs invalid users + response size analysis |
+| **CI/CD `--fail-on-severity`** | Pipeline exits with code 1 if findings meet/exceed threshold severity |
 
 ---
 
@@ -261,10 +268,12 @@ Each finding includes:
 
 - **Title** and **Severity** (Critical / High / Medium / Low / Info)
 - **OWASP Top 10 (2021)** category (A01–A10)
+- **WSTG ID** (e.g. WSTG-INPV-05) — Web Security Testing Guide
+- **ASVS ID** (e.g. ASVS-5.3.4) — Application Security Verification Standard v5.0
 - **CWE** reference number
 - **CVSS v3.1** base score
 - **URL** and **Evidence** (parameter, payload, response)
-- **Recommendation** (remediation steps)
+- **Recommendation** with code snippets and fix examples
 
 ---
 
@@ -282,7 +291,7 @@ webscan https://app.target.com -q --rate 0.5 -c "session=abc123" -y
 
 **Internal API audit:**
 ```bash
-webscan https://api.internal.com --scope api_sec,authn_bypass,jwt,graphql,cors -y
+webscan https://api.internal.com --scope api_sec,authn_bypass,jwt,graphql,cors,nosql_inject,sspp -y
 ```
 
 **Full scan through Burp with Burp XML export:**
@@ -295,13 +304,19 @@ webscan https://target.com --proxy http://127.0.0.1:8080 --burp -y
 webscan --compare ~/webscan-reports/scan_before.json ~/webscan-reports/scan_after.json
 ```
 
+**CI/CD — fail pipeline on Critical/High:**
+```bash
+webscan https://staging.app.com -y -q --fail-on-severity high
+echo "Exit: $?"  # 0 = pass, 1 = fail
+```
+
 ---
 
 ## File Structure
 
 ```
 webscan-pro/
-├── webscan_pro.py    # Main scanner (~7,950 lines, single file, 70 modules)
+├── webscan_pro.py    # Main scanner (~9,481 lines, single file, 77 modules)
 ├── install.sh        # Kali Linux installer
 ├── wordlist.txt      # 575-entry directory wordlist
 └── README.md         # This file
