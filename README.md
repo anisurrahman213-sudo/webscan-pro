@@ -8,9 +8,9 @@
 
 ## Overview
 
-WebScan Pro is a comprehensive, single-file Python 3 scanner covering **77 security modules** across OWASP Top 10 (2021), WSTG, ASVS v5.0, CWE, and CVSS v3.1 — built for professional security assessments. It generates 4 report types: HTML, JSON, PDF, and Expert Validation Report with per-finding manual verification commands.
+WebScan Pro is a comprehensive, single-file Python 3 scanner covering **80 security modules** across OWASP Top 10 (2021), WSTG, ASVS v5.0, CWE, and CVSS v3.1 — built for professional security assessments. It generates 4 report types: HTML, JSON, PDF, and Expert Validation Report with per-finding manual verification commands.
 
-**77 modules · OWASP Top 10 (2021) · WSTG + ASVS v5.0 Mapping · CVSS v3.1 · CWE · Confirmed vs Potential · HTML + JSON + PDF + Expert Validation · Parallel Execution · Built-in OSINT · CVE Mapping · WAF Bypass · Web Crawler · Cloud Scanner · CI/CD Integration**
+**80 modules · OWASP Top 10 (2021) · WSTG + ASVS v5.0 Mapping · CVSS v3.1 · CWE · Confirmed vs Potential · HTML + JSON + PDF + Expert Validation · Parallel Execution · Built-in OSINT · CVE Mapping · WAF Bypass · Web Crawler · Cloud Scanner · CI/CD Integration · Threat Intelligence API (VirusTotal/Shodan/AbuseIPDB/URLScan.io)**
 
 ---
 
@@ -43,24 +43,30 @@ webscan <URL> [options]
 
 | Task | Command |
 |------|---------|
-| Standard scan | `webscan https://target.com -y` |
-| Quiet / bug bounty | `webscan https://target.com -q -y` |
-| Verbose debug | `webscan https://target.com -v -y` |
-| Authenticated scan | `webscan https://target.com -c "session=abc; auth=1" -y` |
-| Login form auth | `webscan https://target.com -U admin -P secret -y` |
-| Fast (skip heavy modules) | `webscan https://target.com --no-advanced -y` |
-| Rate-limited (1 s delay) | `webscan https://target.com --rate 1.0 -y` |
-| Targeted scope | `webscan https://target.com --scope sqli,xss,jwt -y` |
-| Through Burp proxy | `webscan https://target.com --proxy http://127.0.0.1:8080 -y` |
-| Export Burp XML | `webscan https://target.com --burp -y` |
-| Resume interrupted scan | `webscan https://target.com --resume -y` |
+| Standard scan | `webscan https://target.com` |
+| Auto-confirm (no prompt) | `webscan https://target.com -y` |
+| Quiet / bug bounty | `webscan https://target.com -q` |
+| Verbose debug | `webscan https://target.com -v` |
+| Authenticated scan | `webscan https://target.com -c "session=abc; auth=1"` |
+| Login form auth | `webscan https://target.com -U admin -P secret` |
+| Fast (skip heavy modules) | `webscan https://target.com --no-advanced` |
+| Rate-limited (1 s delay) | `webscan https://target.com --rate 1.0` |
+| **Run only specific module** | `webscan https://target.com --only sqli` |
+| **Run multiple specific** | `webscan https://target.com --only sqli,xss,nosql_inject` |
+| **Only SSL/TLS checks** | `webscan https://target.com --only ssl,headers,cors` |
+| **Only injection tests** | `webscan https://target.com --only sqli,xss,lfi,ssti,cmdi,xxe` |
+| **Only OSINT recon** | `webscan https://target.com --only osint_email,osint_dns,osint_github` |
+| **Only API threat intel** | `webscan https://target.com --only api_intel` |
+| Through Burp proxy | `webscan https://target.com --proxy http://127.0.0.1:8080` |
+| Export Burp XML | `webscan https://target.com --burp` |
+| Resume interrupted scan | `webscan https://target.com --resume checkpoint.json` |
 | Compare two scans | `webscan --compare scan1.json scan2.json` |
-| Filter by CVSS score | `webscan https://target.com --cvss 7.0 -y` |
-| Custom wordlist | `webscan https://target.com -w wordlist.txt -y` |
-| Custom output dir | `webscan https://target.com -o /path/to/reports -y` |
+| Filter by CVSS score | `webscan https://target.com --cvss 7.0` |
+| Custom wordlist | `webscan https://target.com -w wordlist.txt` |
+| Custom output dir | `webscan https://target.com -o /path/to/reports` |
 | **CI/CD pipeline** | `webscan https://target.com -y --fail-on-severity high` |
-| **Credential stuffing** | `webscan https://target.com --combo creds.txt -y` |
-| **Password spray** | `webscan https://target.com --spray Password123 -y` |
+| **Credential stuffing** | `webscan https://target.com --combo creds.txt` |
+| **Password spray** | `webscan https://target.com --spray Password123` |
 
 ---
 
@@ -80,7 +86,8 @@ webscan <URL> [options]
 | `--timeout` | Request timeout in seconds (default: 7) |
 | `--proxy` | HTTP/HTTPS proxy URL: `http://127.0.0.1:8080` |
 | `--rate` | Delay (seconds) between requests for rate limiting |
-| `--scope` | Comma-separated module keys to run only those modules |
+| `--only` | **Run ONLY these modules** (comma-separated keys). E.g. `--only sqli,xss,nosql_inject` |
+| `--scope` | Alias for `--only` (legacy) |
 | `--cvss` | Minimum CVSS score to include in report (e.g. `7.0`) |
 | `--burp` | Export Burp Suite XML alongside HTML/JSON |
 | `--pdf` | Show warning if PDF export fails (PDF auto-generated if weasyprint installed) |
@@ -100,9 +107,56 @@ webscan <URL> [options]
 
 ---
 
-## Scope Modules
+## API Threat Intelligence Setup
 
-Use `--scope` with a comma-separated list of module keys to target specific checks.
+WebScan Pro automatically uses threat intelligence APIs if environment variables are set. Keys are stored securely in `~/.webscan_keys` — never hardcoded.
+
+### One-time setup (paste each key when asked):
+
+```bash
+touch ~/.webscan_keys && chmod 600 ~/.webscan_keys && \
+read -s -p "VirusTotal Key: " K1 && echo && echo "export VT_API_KEY='$K1'" >> ~/.webscan_keys && \
+read -s -p "Shodan Key: " K2 && echo && echo "export SHODAN_API_KEY='$K2'" >> ~/.webscan_keys && \
+read -s -p "AbuseIPDB Key: " K3 && echo && echo "export ABUSEIPDB_KEY='$K3'" >> ~/.webscan_keys && \
+read -s -p "URLScan.io Key: " K4 && echo && echo "export URLSCAN_KEY='$K4'" >> ~/.webscan_keys && \
+grep -qxF 'source ~/.webscan_keys' ~/.bashrc || echo 'source ~/.webscan_keys' >> ~/.bashrc && \
+source ~/.webscan_keys && echo "✅ Done — API keys saved"
+```
+
+### Verify keys loaded (shows ✅/❌, never the key value):
+
+```bash
+[ -n "$VT_API_KEY" ]      && echo "VirusTotal  ✅" || echo "VirusTotal  ❌"
+[ -n "$SHODAN_API_KEY" ]  && echo "Shodan      ✅" || echo "Shodan      ❌"
+[ -n "$ABUSEIPDB_KEY" ]   && echo "AbuseIPDB   ✅" || echo "AbuseIPDB   ❌"
+[ -n "$URLSCAN_KEY" ]     && echo "URLScan.io  ✅" || echo "URLScan.io  ❌"
+```
+
+### How to get free API keys:
+
+| Service | URL | Free Limit |
+|---------|-----|-----------|
+| VirusTotal | virustotal.com → Profile → API Key | 500 req/day |
+| Shodan | account.shodan.io → Overview → API Key | 100 queries/month |
+| AbuseIPDB | abuseipdb.com/account/api-key | 1,000 req/day |
+| URLScan.io | urlscan.io/user/profile → API Key | 100 req/hour |
+
+---
+
+### Update webscan after git pull:
+
+```bash
+cd ~/webscan-pro
+git pull
+sudo cp webscan_pro.py /opt/webscan_pro/webscan_pro.py
+webscan --version
+```
+
+---
+
+## Module Keys (for --only flag)
+
+Use `--only` with a comma-separated list of module keys to target specific checks.
 
 ### Phase 1 — Recon
 
@@ -112,6 +166,7 @@ Use `--scope` with a comma-separated list of module keys to target specific chec
 | `ip_info` | IP / ASN Info |
 | `ports` | Port Scan |
 | `subdomains` | Subdomain Enumeration |
+| `api_intel` | Threat Intelligence (VirusTotal + Shodan + AbuseIPDB + URLScan.io) |
 
 ### Phase 1b — OSINT Intelligence
 

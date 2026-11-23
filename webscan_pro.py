@@ -338,6 +338,13 @@ CAT_META = {
 "acct_enum":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-204","cvss":5.3,"wstg":"WSTG-IDNT-04","asvs":"V2.9","biz":"Account enumeration aids targeted attacks by revealing valid usernames via response differences"},
 "login_brute":{"owasp":"A07:2021","owasp_name":"Identification and Authentication Failures","cwe":"CWE-307","cvss":9.8,
         "biz": "Weak or default credentials on login forms allow attackers to gain unauthorized access through automated brute-force, credential stuffing, or password spray attacks — bypassing authentication entirely.","wstg": "WSTG-ATHN-03","asvs": "ASVS-2.2.1"},
+# ── v11.8: Threat Intelligence API categories ────────────────────
+"threat_intel":{"owasp":"A09:2021","owasp_name":"Security Logging and Monitoring Failures","cwe":"CWE-693","cvss":8.5,
+        "wstg":"WSTG-INFO-01","asvs":"V7.2",
+        "biz":"External threat intelligence confirms the target is flagged as malicious or abusive — indicating active exploitation, blacklisting, or compromise."},
+"shodan_intel":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-16","cvss":7.5,
+        "wstg":"WSTG-CONF-01","asvs":"V14.4",
+        "biz":"Shodan passive scan reveals exposed services, open ports and known CVEs on the target IP — attackers use this data to plan exploits."},
 }
 
 CAT_TITLES = {
@@ -422,6 +429,9 @@ CAT_TITLES = {
     "postmessage":     ("💬",  "PostMessage / Browser Storage"),
     "acct_enum":       ("👤",  "Account Enumeration"),
     "login_brute":     ("🔑",  "Expert Login Brute-Force"),
+    # v11.8: Threat Intelligence API
+    "threat_intel":    ("🛡️",  "Threat Intelligence (VirusTotal/AbuseIPDB/URLScan)"),
+    "shodan_intel":    ("🌐",  "Shodan Intelligence (Ports/CVEs/Services)"),
 }
 
 # ─── Terminal UI ───────────────────────────────────────────────────
@@ -611,7 +621,7 @@ def banner():
 """+Style.RESET_ALL)
     print(f"  {Fore.WHITE}{'─'*68}{Style.RESET_ALL}")
     print(f"  {Fore.CYAN}  Professional Web Security Scanner{Style.RESET_ALL}  {Fore.YELLOW}v{VERSION}{Style.RESET_ALL}")
-    print(f"  {Fore.WHITE}  77 Modules  |  CVSS v3.1 · OWASP · CWE  |  PDF · Burp XML · CVE Reports{Style.RESET_ALL}")
+    print(f"  {Fore.WHITE}  80 Modules  |  CVSS v3.1 · OWASP · CWE  |  PDF · Burp XML · CVE Reports{Style.RESET_ALL}")
     print(f"  {Fore.WHITE}{'─'*68}{Style.RESET_ALL}\n")
 
 # ═══ MODULE 0 — WAF DETECTION (v9.0: 30+ signatures) ════════════
@@ -683,6 +693,241 @@ def get_ip_info(domain):
         err(f"Cannot resolve: {domain}")
     _module_done("ip_info")
     return result
+
+# ═══ MODULE 81 — THREAT INTELLIGENCE API (v11.8: VT/Shodan/AbuseIPDB/URLScan) ══
+
+def _vt_check(target_url, api_key):
+    """VirusTotal v3 API — URL reputation (70+ AV engines)."""
+    try:
+        import base64
+        url_id = base64.urlsafe_b64encode(target_url.encode()).rstrip(b"=").decode()
+        r = rget(f"https://www.virustotal.com/api/v3/urls/{url_id}",
+                 headers={"x-apikey": api_key}, timeout=20)
+        if r.status_code == 200:
+            attrs = r.json().get("data",{}).get("attributes",{})
+            stats = attrs.get("last_analysis_stats",{})
+            malicious  = stats.get("malicious", 0)
+            suspicious = stats.get("suspicious", 0)
+            total      = sum(stats.values()) or 1
+            info(f"VirusTotal: {malicious} malicious | {suspicious} suspicious | {total} engines")
+            if malicious > 0 or suspicious > 0:
+                sev = "Critical" if malicious >= 5 else "High" if malicious > 0 else "Medium"
+                add("threat_intel", {
+                    "title":f"VirusTotal: {malicious} malicious / {suspicious} suspicious detections",
+                    "severity": sev,
+                    "url": target_url,
+                    "description":(f"VirusTotal scanned {total} AV engines. "
+                                   f"Malicious: {malicious}, Suspicious: {suspicious}. "
+                                   f"Stats: {stats}"),
+                    "evidence": str(stats),
+                    "recommendation":("Investigate flagged content. Remove or remediate malicious code. "
+                                      "Full report: https://www.virustotal.com"),
+                    "owasp":"A09:2021","cwe":"CWE-693","cvss_score":8.5,
+                })
+                bad(f"VirusTotal: FLAGGED — {malicious} malicious | {suspicious} suspicious")
+            else:
+                good(f"VirusTotal: Clean ({total} engines — 0 detections)")
+        elif r.status_code == 404:
+            # Submit for first-time analysis
+            r2 = requests.post("https://www.virustotal.com/api/v3/urls",
+                               headers={"x-apikey": api_key},
+                               data={"url": target_url}, timeout=15)
+            if r2.status_code == 200:
+                info("VirusTotal: URL submitted for analysis (not cached yet — check results in ~1 min)")
+            else:
+                info(f"VirusTotal: Submission status {r2.status_code}")
+        elif r.status_code == 429:
+            warn("VirusTotal: Rate limit hit (free: 4 req/min). Skipping.")
+        elif r.status_code == 401:
+            warn("VirusTotal: Invalid API key")
+        else:
+            warn(f"VirusTotal: HTTP {r.status_code}")
+    except Exception as _e:
+        warn(f"VirusTotal check error: {_e}")
+
+
+def _shodan_check(ip, api_key):
+    """Shodan API — open ports, service banners, known CVEs."""
+    try:
+        r = requests.get(f"https://api.shodan.io/shodan/host/{ip}",
+                         params={"key": api_key}, timeout=20)
+        if r.status_code == 200:
+            data    = r.json()
+            ports   = data.get("ports", [])
+            vulns   = data.get("vulns", {})
+            org     = data.get("org",          "Unknown")
+            country = data.get("country_name", "Unknown")
+            hostnames = data.get("hostnames", [])
+            info(f"Shodan: {ip} | Org={org} | {country} | Ports={ports}")
+            if hostnames:
+                info(f"Shodan: Hostnames: {hostnames}")
+            # Open ports finding
+            if ports:
+                add("shodan_intel", {
+                    "title": f"Shodan: {len(ports)} open port(s) on {ip}",
+                    "severity": "Info",
+                    "url": ip,
+                    "description":(f"Shodan passive scan found {len(ports)} open ports on {ip}. "
+                                   f"Org: {org} | Country: {country} | Hostnames: {hostnames}"),
+                    "evidence": f"Ports: {ports}",
+                    "recommendation":("Close unused ports. Restrict access with firewall rules. "
+                                      "Nginx: allow specific IP ranges; deny all."),
+                    "owasp":"A05:2021","cwe":"CWE-16","cvss_score":5.0,
+                })
+            # CVE finding
+            if vulns:
+                cve_list = sorted(vulns.keys())
+                add("shodan_intel", {
+                    "title": f"Shodan: {len(cve_list)} known CVE(s) on {ip}",
+                    "severity": "Critical",
+                    "url": ip,
+                    "description":(f"Shodan found {len(cve_list)} public CVEs on {ip}: "
+                                   f"{', '.join(cve_list[:10])}"
+                                   + (" ..." if len(cve_list)>10 else "")),
+                    "evidence": f"CVEs: {cve_list}",
+                    "recommendation":("Patch listed CVEs immediately. Apply security updates. "
+                                      "Subscribe to vendor advisories."),
+                    "owasp":"A06:2021","cwe":"CWE-937","cvss_score":9.8,
+                })
+                bad(f"Shodan: {len(cve_list)} CVEs: {', '.join(cve_list[:5])}")
+            else:
+                good(f"Shodan: No known CVEs on {ip}")
+        elif r.status_code == 404:
+            info(f"Shodan: No scan data for {ip}")
+        elif r.status_code == 401:
+            warn("Shodan: Invalid API key")
+        elif r.status_code == 429:
+            warn("Shodan: Rate limit hit (free: 100 queries/month)")
+        else:
+            warn(f"Shodan: HTTP {r.status_code}")
+    except Exception as _e:
+        warn(f"Shodan check error: {_e}")
+
+
+def _abuseipdb_check(ip, api_key):
+    """AbuseIPDB API — IP reputation / blacklist confidence score."""
+    try:
+        r = requests.get("https://api.abuseipdb.com/api/v2/check",
+                         params={"ipAddress": ip, "maxAgeInDays": 90, "verbose": True},
+                         headers={"Key": api_key, "Accept": "application/json"},
+                         timeout=15)
+        if r.status_code == 200:
+            data    = r.json().get("data", {})
+            score   = data.get("abuseConfidenceScore", 0)
+            reports = data.get("totalReports", 0)
+            country = data.get("countryCode", "?")
+            isp     = data.get("isp", "?")
+            last_at = data.get("lastReportedAt", "Never")
+            info(f"AbuseIPDB: {ip} | Score={score}% | Reports={reports} | {country} | {isp}")
+            if score >= 25:
+                sev = "Critical" if score >= 75 else "High" if score >= 50 else "Medium"
+                add("threat_intel", {
+                    "title": f"AbuseIPDB: {ip} has {score}% abuse confidence score",
+                    "severity": sev,
+                    "url": ip,
+                    "description":(f"AbuseIPDB confidence: {score}% | Total reports: {reports} | "
+                                   f"Country: {country} | ISP: {isp} | Last reported: {last_at}"),
+                    "evidence": f"Score: {score}% | Reports: {reports} | Last: {last_at}",
+                    "recommendation":("Block this IP at firewall/WAF level if it is external. "
+                                      "If this is your server IP, check for compromise or abuse."),
+                    "owasp":"A09:2021","cwe":"CWE-693","cvss_score":7.5,
+                })
+                bad(f"AbuseIPDB: {score}% abuse score | {reports} reports in 90 days")
+            else:
+                good(f"AbuseIPDB: Clean — {score}% score | {reports} reports")
+        elif r.status_code == 429:
+            warn("AbuseIPDB: Rate limit hit (free: 1000/day)")
+        elif r.status_code == 401:
+            warn("AbuseIPDB: Invalid API key")
+        else:
+            warn(f"AbuseIPDB: HTTP {r.status_code}")
+    except Exception as _e:
+        warn(f"AbuseIPDB check error: {_e}")
+
+
+def _urlscan_check(target_url, api_key):
+    """URLScan.io API — passive scan lookup + optional submission."""
+    try:
+        domain = urlparse(target_url).hostname or target_url
+        # Search for existing scans
+        r = requests.get("https://urlscan.io/api/v1/search/",
+                         params={"q": f"domain:{domain}", "size": 5},
+                         headers={"API-Key": api_key},
+                         timeout=15)
+        if r.status_code == 200:
+            results = r.json().get("results", [])
+            info(f"URLScan.io: {len(results)} previous scans for {domain}")
+            if results:
+                latest  = results[0]
+                scan_id = latest.get("_id","")
+                verdict = latest.get("verdicts", {}).get("overall", {})
+                score      = verdict.get("score", 0)
+                malicious  = verdict.get("malicious", False)
+                categories = verdict.get("categories", [])
+                link = f"https://urlscan.io/result/{scan_id}/"
+                if malicious or score > 50:
+                    add("threat_intel", {
+                        "title": f"URLScan.io: {domain} flagged ({'malicious' if malicious else 'suspicious'})",
+                        "severity": "High" if malicious else "Medium",
+                        "url": target_url,
+                        "description":(f"URLScan.io verdict: score={score}, malicious={malicious}, "
+                                       f"categories={categories}"),
+                        "evidence": f"Scan report: {link}",
+                        "recommendation": f"Review full scan report: {link}",
+                        "owasp":"A09:2021","cwe":"CWE-693","cvss_score":7.0,
+                    })
+                    bad(f"URLScan.io: score={score} | malicious={malicious} | {link}")
+                else:
+                    good(f"URLScan.io: Clean (score={score}) | {link}")
+            else:
+                # Submit new private scan
+                r2 = requests.post("https://urlscan.io/api/v1/scan/",
+                                   headers={"API-Key": api_key, "Content-Type":"application/json"},
+                                   json={"url": target_url, "visibility":"private"},
+                                   timeout=15)
+                if r2.status_code == 200:
+                    uuid = r2.json().get("uuid","")
+                    info(f"URLScan.io: Submitted — https://urlscan.io/result/{uuid}/ (ready in ~30s)")
+                else:
+                    info(f"URLScan.io: Submission status {r2.status_code}")
+        elif r.status_code == 429:
+            warn("URLScan.io: Rate limit hit (free: 100/hr)")
+        elif r.status_code == 400:
+            warn("URLScan.io: Bad request")
+        else:
+            warn(f"URLScan.io: HTTP {r.status_code}")
+    except Exception as _e:
+        warn(f"URLScan.io check error: {_e}")
+
+
+def api_intelligence_scan(url, domain, ip,
+                           vt_key=None, shodan_key=None,
+                           abuseipdb_key=None, urlscan_key=None):
+    """MODULE 81 — External Threat Intelligence (VirusTotal/Shodan/AbuseIPDB/URLScan.io).
+    API keys read from env vars — never hardcoded.
+    Set: VT_API_KEY, SHODAN_API_KEY, ABUSEIPDB_KEY, URLSCAN_KEY
+    """
+    if _module_skip("api_intel"): info("Skipping API Intel (already done)"); return
+
+    _tasks = []
+    if vt_key:
+        _tasks.append(lambda: _vt_check(url, vt_key))
+    if shodan_key and ip:
+        _tasks.append(lambda: _shodan_check(ip, shodan_key))
+    if abuseipdb_key and ip:
+        _tasks.append(lambda: _abuseipdb_check(ip, abuseipdb_key))
+    if urlscan_key:
+        _tasks.append(lambda: _urlscan_check(url, urlscan_key))
+
+    if not _tasks:
+        info("API Intelligence: No keys configured — skipping"); return
+
+    with ThreadPoolExecutor(max_workers=4) as _ap:
+        _futs = [_ap.submit(t) for t in _tasks]
+        for _f in as_completed(_futs): _pass(_f)
+
+    _module_done("api_intel")
+
 
 # ═══ MODULE 2 — PORT SCANNER (v9.0: 150+ ports + banner grabbing) ═
 def _grab_banner(host, port, timeout=2):
@@ -3554,6 +3799,9 @@ def parse_args():
   python3 webscan_pro.py --compare report1.json report2.json
   python3 webscan_pro.py http://target.com --proxy http://127.0.0.1:8080
   python3 webscan_pro.py http://target.com --cookie "session=abc123"
+  python3 webscan_pro.py http://target.com --only sqli,xss,nosql_inject
+  python3 webscan_pro.py http://target.com --only ssl,headers,cors
+  python3 webscan_pro.py http://target.com --fail-on-severity high
 """)
     p.add_argument("url",             nargs="?",   help="Target URL (e.g. http://target.com)")
     p.add_argument("-v","--verbose",  action="store_true", help="Verbose output — show every request")
@@ -3588,6 +3836,15 @@ def parse_args():
     # v11.0 flags
     p.add_argument("--scope",         default=None,
                    help="Only run these module keys, comma-separated (e.g. sqli,xss,jwt,dom_xss)")
+    p.add_argument("--only",          default=None,
+                   help=("Run ONLY these modules — comma-separated module keys (alias for --scope). "
+                         "Available keys: waf, ip_info, ports, subdomains, headers, ssl, cookies, cors, "
+                         "sqli, xss, lfi, ssti, cmdi, xxe, ssrf, csrf, jwt, redirect, idor, cors, "
+                         "graphql, oauth2, deserialization, websocket, prototype_pollution, api_intel, "
+                         "nosql_inject, sspp, oob_blind, file_upload, postmessage, acct_enum, login_brute, "
+                         "osint_email, osint_dns, osint_dorks, osint_breach, osint_github, osint_js, "
+                         "dom_xss, cache_poisoning, hpp, cve_mapping, cloud_bucket, s3_brute, wayback_urls. "
+                         "Example: --only sqli,xss,nosql_inject"))
     p.add_argument("--rate",          type=float, default=0.0,
                    help="Seconds between requests — rate limit (default: 0 = unlimited)")
     return p.parse_args()
@@ -3631,10 +3888,11 @@ def main():
         RATE_DELAY = args.rate
         info(f"Rate limit: {RATE_DELAY}s between requests")
 
-    # v11.0: Scope filter
-    if args.scope:
-        SCAN_SCOPE.update(s.strip() for s in args.scope.split(",") if s.strip())
-        info(f"Scope filter: only running modules: {SCAN_SCOPE}")
+    # v11.0: Scope filter  |  v11.8: --only alias
+    _scope_val = args.only or args.scope
+    if _scope_val:
+        SCAN_SCOPE.update(s.strip() for s in _scope_val.split(",") if s.strip())
+        info(f"Scope filter (--only): running ONLY: {SCAN_SCOPE}")
 
     # Proxy
     if args.proxy:
@@ -3700,7 +3958,7 @@ def main():
 
     info(f"Target: {url}")
     info(f"Version: WebScan Pro v{VERSION}")
-    info(f"Modules: 77  |  Ports: {len(PORTS_TOP)}  |  WAF Sigs: {len(WAF_SIGS_GLOBAL)}")
+    info(f"Modules: 80  |  Ports: {len(PORTS_TOP)}  |  WAF Sigs: {len(WAF_SIGS_GLOBAL)}")
     info(f"Sensitive paths: {len(SENSITIVE_PATHS)}  |  SSRF targets: 18")
     info(f"Output: {args.output}")
     info(f"Checkpoint: {CHECKPOINT_FILE}")
@@ -3714,7 +3972,8 @@ def main():
     section("PHASE 1 — RECONNAISSANCE","🔍")
     # waf + ip_info first (fast, ~1-2s each; sequential is fine)
     detect_waf(url)
-    get_ip_info(domain)
+    _ip_data    = get_ip_info(domain)
+    _target_ip  = (_ip_data.get("ip","") if isinstance(_ip_data, dict) else "")
     # ports + subs in parallel (independent, each can take 10-30s)
     open_ports = []; subs = []
     with ThreadPoolExecutor(max_workers=2) as _p1:
@@ -3730,6 +3989,22 @@ def main():
             except Exception as _e: err(f"subdomain_enum error: {_e}")
         else:
             info("Subdomain enum skipped (--no-subs)")
+
+    # ── PHASE 1a: THREAT INTELLIGENCE API ─────────────────────────
+    # Keys loaded from env vars — never hardcoded
+    _vt_key      = os.environ.get("VT_API_KEY","").strip()
+    _shodan_key  = os.environ.get("SHODAN_API_KEY","").strip()
+    _abipdb_key  = os.environ.get("ABUSEIPDB_KEY","").strip()
+    _urlscan_key = os.environ.get("URLSCAN_KEY","").strip()
+    if any([_vt_key, _shodan_key, _abipdb_key, _urlscan_key]):
+        section("PHASE 1a — THREAT INTELLIGENCE (API)","🛡️")
+        api_intelligence_scan(url, domain, _target_ip,
+                              vt_key=_vt_key      or None,
+                              shodan_key=_shodan_key   or None,
+                              abuseipdb_key=_abipdb_key   or None,
+                              urlscan_key=_urlscan_key  or None)
+    else:
+        info("API Intelligence: No API keys set — set VT_API_KEY, SHODAN_API_KEY, ABUSEIPDB_KEY, URLSCAN_KEY in env")
 
     # ── PHASE 1b: OSINT — all 6 modules parallel ───────────────────
     section("PHASE 1b — OSINT INTELLIGENCE","🔎")
