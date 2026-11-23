@@ -724,7 +724,7 @@ def _vt_check(target_url, api_key):
                                       "Full report: https://www.virustotal.com"),
                     "owasp":"A09:2021","cwe":"CWE-693","cvss_score":8.5,
                 })
-                bad(f"VirusTotal: FLAGGED — {malicious} malicious | {suspicious} suspicious")
+                warn(f"VirusTotal: FLAGGED — {malicious} malicious | {suspicious} suspicious")
             else:
                 good(f"VirusTotal: Clean ({total} engines — 0 detections)")
         elif r.status_code == 404:
@@ -789,7 +789,7 @@ def _shodan_check(ip, api_key):
                                       "Subscribe to vendor advisories."),
                     "owasp":"A06:2021","cwe":"CWE-937","cvss_score":9.8,
                 })
-                bad(f"Shodan: {len(cve_list)} CVEs: {', '.join(cve_list[:5])}")
+                warn(f"Shodan: {len(cve_list)} CVEs: {', '.join(cve_list[:5])}")
             else:
                 good(f"Shodan: No known CVEs on {ip}")
         elif r.status_code == 404:
@@ -832,7 +832,7 @@ def _abuseipdb_check(ip, api_key):
                                       "If this is your server IP, check for compromise or abuse."),
                     "owasp":"A09:2021","cwe":"CWE-693","cvss_score":7.5,
                 })
-                bad(f"AbuseIPDB: {score}% abuse score | {reports} reports in 90 days")
+                warn(f"AbuseIPDB: {score}% abuse score | {reports} reports in 90 days")
             else:
                 good(f"AbuseIPDB: Clean — {score}% score | {reports} reports")
         elif r.status_code == 429:
@@ -876,7 +876,7 @@ def _urlscan_check(target_url, api_key):
                         "recommendation": f"Review full scan report: {link}",
                         "owasp":"A09:2021","cwe":"CWE-693","cvss_score":7.0,
                     })
-                    bad(f"URLScan.io: score={score} | malicious={malicious} | {link}")
+                    warn(f"URLScan.io: score={score} | malicious={malicious} | {link}")
                 else:
                     good(f"URLScan.io: Clean (score={score}) | {link}")
             else:
