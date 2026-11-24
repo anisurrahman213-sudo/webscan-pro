@@ -1201,9 +1201,10 @@ def openvas_scan(url, domain, ip):
         _v = subprocess.run(_base + ["--xml", "<get_version/>"], capture_output=True, text=True, timeout=15)
         if "version" not in _v.stdout.lower():
             info(f"OpenVAS: Cannot connect to GVM at {_host}"); _module_done("openvas_scan"); return
-        # Create target
+        # Create target (port_range required by GVM API)
         _ct = subprocess.run(_base + ["--xml",
-            f'<create_target><name>ws_{int(time.time())}</name><hosts>{_target_ip}</hosts></create_target>'],
+            f'<create_target><name>ws_{int(time.time())}</name><hosts>{_target_ip}</hosts>'
+            f'<port_range>T:1-1024,U:1-1024</port_range></create_target>'],
             capture_output=True, text=True, timeout=20)
         _tid = _re.search(r'id="([^"]+)"', _ct.stdout)
         if not _tid: info("OpenVAS: Cannot create target"); _module_done("openvas_scan"); return
