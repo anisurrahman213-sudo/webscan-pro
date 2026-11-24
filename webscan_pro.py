@@ -1191,7 +1191,12 @@ def openvas_scan(url, domain, ip):
     _target_ip = ip or domain
     info(f"OpenVAS: Connecting to GVM at {_host}...")
     try:
-        _base = [_cli, "--gmp-username", _user, "--gmp-password", _pass, "--hostname", _host]
+        _sock = os.environ.get("OPENVAS_SOCKET", "/run/gvmd/gvmd.sock")
+        _use_sudo = not os.access(_sock, os.R_OK)
+        if _use_sudo:
+            _base = ["sudo", "-u", "_gvm", _cli, "--gmp-username", _user, "--gmp-password", _pass, "socket", "--socketpath", _sock]
+        else:
+            _base = [_cli, "--gmp-username", _user, "--gmp-password", _pass, "socket", "--socketpath", _sock]
         # Test connection
         _v = subprocess.run(_base + ["--xml", "<get_version/>"], capture_output=True, text=True, timeout=15)
         if "version" not in _v.stdout.lower():
