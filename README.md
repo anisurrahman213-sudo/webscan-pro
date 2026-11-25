@@ -1,386 +1,404 @@
-# WebScan Pro v11.7
+# WebScan Pro
 
-**Professional Web Application Penetration Testing Scanner**
+```
+██╗    ██╗███████╗██████╗ ███████╗ ██████╗ █████╗ ███╗   ██╗    ██████╗ ██████╗  ██████╗
+██║    ██║██╔════╝██╔══██╗██╔════╝██╔════╝██╔══██╗████╗  ██║    ██╔══██╗██╔══██╗██╔═══██╗
+██║ █╗ ██║█████╗  ██████╔╝███████╗██║     ███████║██╔██╗ ██║    ██████╔╝██████╔╝██║   ██║
+██║███╗██║██╔══╝  ██╔══██╗╚════██║██║     ██╔══██║██║╚██╗██║    ██╔═══╝ ██╔══██╗██║   ██║
+╚███╔███╔╝███████╗██████╔╝███████║╚██████╗██║  ██║██║ ╚████║    ██║     ██║  ██║╚██████╔╝
+ ╚══╝╚══╝ ╚══════╝╚═════╝ ╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═══╝    ╚═╝     ╚═╝  ╚═╝ ╚═════╝
+```
 
-> Authorized penetration testing only. Unauthorized use is illegal.
+**Professional Web Security Scanner** | v12.0 | 91 Modules
+
+[![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://python.org)
+[![Platform](https://img.shields.io/badge/Platform-Kali%20Linux-purple)](https://kali.org)
+[![Modules](https://img.shields.io/badge/Modules-91-green)]()
+[![License](https://img.shields.io/badge/License-MIT-yellow)]()
+
+> **For authorized security testing only. Always obtain written permission before scanning any target.**
 
 ---
 
-## Overview
+## What is WebScan Pro?
 
-WebScan Pro is a comprehensive, single-file Python 3 scanner covering **80 security modules** across OWASP Top 10 (2021), WSTG, ASVS v5.0, CWE, and CVSS v3.1 — built for professional security assessments. It generates 4 report types: HTML, JSON, PDF, and Expert Validation Report with per-finding manual verification commands.
+WebScan Pro is a comprehensive, single-file Python 3 web security scanner built for professional penetration testers. It combines 91 security modules — from basic recon to advanced vulnerability detection — with AI-powered triage and enterprise-grade tool integration.
 
-**80 modules · OWASP Top 10 (2021) · WSTG + ASVS v5.0 Mapping · CVSS v3.1 · CWE · Confirmed vs Potential · HTML + JSON + PDF + Expert Validation · Parallel Execution · Built-in OSINT · CVE Mapping · WAF Bypass · Web Crawler · Cloud Scanner · CI/CD Integration · Threat Intelligence API (VirusTotal/Shodan/AbuseIPDB/URLScan.io)**
+**Single file. 91 modules. No setup complexity.**
+
+---
+
+## Features
+
+- **91 Security Modules** — WAF detection, XSS, SQLi, LFI, SSRF, JWT, CORS, IDOR, and 83 more
+- **AI Triage** — Automatic vulnerability analysis via Anthropic Claude, OpenAI GPT, or Google Gemini
+- **OpenAPI/Swagger Support** — Automatically test all API endpoints from a spec file
+- **Enterprise Tool Integration** — OpenVAS/GVM, Nessus, ZAP, Metasploit, tshark
+- **OSINT Intelligence** — Shodan, VirusTotal, URLScan, GitHub secrets, breach data, DNS recon
+- **Professional Reports** — HTML, JSON, PDF, and Expert Validation reports
+- **Checkpoint Resume** — Interrupted scans auto-resume from where they stopped
+- **CVSS v3.1 Scoring** — Every finding scored with CVSS, OWASP category, CWE, and WSTG reference
 
 ---
 
 ## Installation
 
+### Requirements
+
+- Kali Linux (recommended) or any Debian-based Linux
+- Python 3.8+
+- pip packages (auto-installed on first run)
+
+### Quick Install
+
 ```bash
-git clone https://github.com/your-username/webscan-pro
+# Clone the repository
+git clone https://github.com/anisurrahman213-sudo/webscan-pro.git
 cd webscan-pro
-sudo bash install.sh
+
+# Install Python dependencies
+pip3 install requests dnspython python-whois colorama fpdf2 urllib3 --break-system-packages
+
+# Make globally accessible
+sudo ln -sf $(pwd)/webscan_pro.py /usr/local/bin/webscan
+chmod +x webscan_pro.py
 ```
 
-Installs the `webscan` global command to `/usr/local/bin/webscan`.  
-Reports saved to `~/webscan-reports/` by default.
+### Optional Tools (for advanced modules)
 
-**Requirements:** Python 3.8+, pip3  
-**Core:** `requests`, `colorama`, `urllib3`  
-**Optional:** `beautifulsoup4`, `dnspython`, `lxml`, `weasyprint` (PDF)
+```bash
+# nmap — port scanning
+sudo apt install nmap -y
+
+# ZAP — passive and active scanning
+sudo apt install zaproxy -y
+
+# tshark — traffic analysis
+sudo apt install tshark -y
+
+# OpenVAS/GVM — vulnerability management
+sudo apt install gvm -y
+sudo gvm-setup
+sudo gvm-start
+
+# Metasploit — exploit framework (pre-installed on Kali)
+# msfconsole
+```
+
+---
+
+## Configuration
+
+Create `~/.webscan_keys` for API keys:
+
+```bash
+# Threat Intelligence APIs
+export SHODAN_API_KEY="your_shodan_key"
+export VIRUSTOTAL_API_KEY="your_virustotal_key"
+export URLSCAN_API_KEY="your_urlscan_key"
+
+# AI Triage (at least one required for --llm-triage)
+export ANTHROPIC_API_KEY="your_anthropic_key"
+export OPENAI_API_KEY="your_openai_key"
+export GOOGLE_API_KEY="your_google_key"
+
+# OpenVAS/GVM
+export OPENVAS_HOST="127.0.0.1"
+export OPENVAS_PORT="9390"
+export OPENVAS_USER="admin"
+export OPENVAS_PASS="your_gvm_password"
+
+# Nessus Essentials
+export NESSUS_URL="https://127.0.0.1:8834"
+export NESSUS_API_KEY="your_nessus_api_key"
+```
+
+Auto-load on terminal start:
+```bash
+echo '[ -f ~/.webscan_keys ] && source ~/.webscan_keys' >> ~/.bashrc
+source ~/.bashrc
+```
 
 ---
 
 ## Usage
 
 ```bash
-webscan <URL> [options]
+# Basic scan
+source ~/.webscan_keys
+python3 webscan_pro.py https://target.com
+
+# Specific modules only
+python3 webscan_pro.py https://target.com --only sqli,xss,lfi
+
+# With AI vulnerability triage
+python3 webscan_pro.py https://target.com --llm-triage
+
+# Choose AI provider
+python3 webscan_pro.py https://target.com --llm-triage --llm-provider openai
+
+# Scan with OpenAPI/Swagger spec
+python3 webscan_pro.py https://target.com --openapi https://api.target.com/swagger.json
+
+# OpenAPI from local file
+python3 webscan_pro.py https://target.com --openapi ./openapi.yaml
+
+# Scope filter (scan specific paths only)
+python3 webscan_pro.py https://target.com --scope /api/,/admin/
+
+# Resume interrupted scan
+python3 webscan_pro.py https://target.com
+# (automatically resumes from checkpoint)
+
+# Fresh scan (clear checkpoint)
+rm ~/webscan-reports/checkpoint_*.json
+python3 webscan_pro.py https://target.com
 ```
 
 ---
 
-## Common Commands
-
-| Task | Command |
-|------|---------|
-| Standard scan | `webscan https://target.com` |
-| Auto-confirm (no prompt) | `webscan https://target.com -y` |
-| Quiet / bug bounty | `webscan https://target.com -q` |
-| Verbose debug | `webscan https://target.com -v` |
-| Authenticated scan | `webscan https://target.com -c "session=abc; auth=1"` |
-| Login form auth | `webscan https://target.com -U admin -P secret` |
-| Fast (skip heavy modules) | `webscan https://target.com --no-advanced` |
-| Rate-limited (1 s delay) | `webscan https://target.com --rate 1.0` |
-| **Run only specific module** | `webscan https://target.com --only sqli` |
-| **Run multiple specific** | `webscan https://target.com --only sqli,xss,nosql_inject` |
-| **Only SSL/TLS checks** | `webscan https://target.com --only ssl,headers,cors` |
-| **Only injection tests** | `webscan https://target.com --only sqli,xss,lfi,ssti,cmdi,xxe` |
-| **Only OSINT recon** | `webscan https://target.com --only osint_email,osint_dns,osint_github` |
-| **Only API threat intel** | `webscan https://target.com --only api_intel` |
-| Through Burp proxy | `webscan https://target.com --proxy http://127.0.0.1:8080` |
-| Export Burp XML | `webscan https://target.com --burp` |
-| Resume interrupted scan | `webscan https://target.com --resume checkpoint.json` |
-| Compare two scans | `webscan --compare scan1.json scan2.json` |
-| Filter by CVSS score | `webscan https://target.com --cvss 7.0` |
-| Custom wordlist | `webscan https://target.com -w wordlist.txt` |
-| Custom output dir | `webscan https://target.com -o /path/to/reports` |
-| **CI/CD pipeline** | `webscan https://target.com -y --fail-on-severity high` |
-| **Credential stuffing** | `webscan https://target.com --combo creds.txt` |
-| **Password spray** | `webscan https://target.com --spray Password123` |
-
----
-
-## All Flags
+## CLI Flags
 
 | Flag | Description |
 |------|-------------|
-| `-y, --yes` | Auto-confirm all prompts (non-interactive) |
-| `-q, --quiet` | Minimal output — findings only |
-| `-v, --verbose` | Verbose output including debug info |
-| `-c, --cookie` | Session cookies: `'name=value; name2=value2'` |
-| `-U, --username` | Login username for form-based auth |
-| `-P, --password` | Login password for form-based auth |
-| `-w, --wordlist` | Custom wordlist file for directory brute-force |
-| `-o, --output` | Report output directory (default: `~/webscan-reports/`) |
-| `-t, --threads` | Concurrent threads (default: 50) |
-| `--timeout` | Request timeout in seconds (default: 7) |
-| `--proxy` | HTTP/HTTPS proxy URL: `http://127.0.0.1:8080` |
-| `--rate` | Delay (seconds) between requests for rate limiting |
-| `--only` | **Run ONLY these modules** (comma-separated keys). E.g. `--only sqli,xss,nosql_inject` |
-| `--scope` | Alias for `--only` (legacy) |
-| `--cvss` | Minimum CVSS score to include in report (e.g. `7.0`) |
-| `--burp` | Export Burp Suite XML alongside HTML/JSON |
-| `--pdf` | Show warning if PDF export fails (PDF auto-generated if weasyprint installed) |
-| `--resume` | Resume from last checkpoint (skips completed modules) |
-| `--compare` | Compare two JSON reports: `--compare a.json b.json` |
-| `--no-ports` | Skip port scanning |
-| `--no-subs` | Skip subdomain enumeration |
-| `--no-ssti` | Skip SSTI detection |
-| `--no-cmdi` | Skip command injection |
-| `--no-smuggling` | Skip HTTP request smuggling |
-| `--no-idor` | Skip IDOR checks |
-| `--no-advanced` | Skip all Phase 2b/2c advanced modules (faster scan) |
-| `--combo` | Credential combo file (user:pass per line) for login brute-force |
-| `--spray` | Single password to spray across common usernames |
-| `--fail-on-severity` | **CI/CD:** Exit code 1 if finding >= this severity (`critical`/`high`/`medium`/`low`) |
-| `--version` | Show version and exit |
+| `--only <modules>` | Comma-separated list of modules to run |
+| `--scope <paths>` | Limit scanning to specific URL paths |
+| `--llm-triage` | Enable AI-powered vulnerability triage |
+| `--llm-provider <name>` | AI provider: `anthropic`, `openai`, `google`, `ollama` |
+| `--openapi <url/file>` | Load OpenAPI/Swagger spec for API endpoint discovery |
 
 ---
 
-## API Threat Intelligence Setup
+## All 91 Modules
 
-WebScan Pro automatically uses threat intelligence APIs if environment variables are set. Keys are stored securely in `~/.webscan_keys` — never hardcoded.
+### Phase 1 — Reconnaissance
+| # | Module | Description |
+|---|--------|-------------|
+| 1 | WAF Detection | Identify Web Application Firewalls (31 signatures) |
+| 2 | Port Scan | Full port scan via nmap |
+| 3 | Subdomain Enum | Subdomain discovery and enumeration |
 
-### One-time setup (paste each key when asked):
+### Phase 1a — Threat Intelligence
+| # | Module | Description |
+|---|--------|-------------|
+| 4 | API Intel | Shodan, VirusTotal, URLScan lookups |
 
-```bash
-touch ~/.webscan_keys && chmod 600 ~/.webscan_keys && \
-read -s -p "VirusTotal Key: " K1 && echo && echo "export VT_API_KEY='$K1'" >> ~/.webscan_keys && \
-read -s -p "Shodan Key: " K2 && echo && echo "export SHODAN_API_KEY='$K2'" >> ~/.webscan_keys && \
-read -s -p "AbuseIPDB Key: " K3 && echo && echo "export ABUSEIPDB_KEY='$K3'" >> ~/.webscan_keys && \
-read -s -p "URLScan.io Key: " K4 && echo && echo "export URLSCAN_KEY='$K4'" >> ~/.webscan_keys && \
-grep -qxF 'source ~/.webscan_keys' ~/.bashrc || echo 'source ~/.webscan_keys' >> ~/.bashrc && \
-source ~/.webscan_keys && echo "✅ Done — API keys saved"
-```
+### Phase 1b — OSINT
+| # | Module | Description |
+|---|--------|-------------|
+| 5 | OSINT Email | Email harvesting |
+| 6 | OSINT DNS Intel | DNS intelligence gathering |
+| 7 | OSINT GitHub | GitHub secret/key exposure |
+| 8 | OSINT Breach | Known breach data check |
+| 9 | OSINT Dorks | Google/Bing dork generation |
+| 10 | OSINT JS Secrets | JavaScript file secret extraction |
 
-### Verify keys loaded (shows ✅/❌, never the key value):
+### Phase 1c — External Tool Integration
+| # | Module | Description |
+|---|--------|-------------|
+| 82 | ZAP Active Scan | OWASP ZAP CLI active scanning |
+| 83 | Metasploit | Metasploit auxiliary module integration |
+| 84 | tshark Traffic | Network traffic capture and analysis |
+| **85** | **OpenVAS** | **GVM/OpenVAS full vulnerability scan** ✅ |
+| 86 | Nessus | Nessus Essentials API integration |
 
-```bash
-[ -n "$VT_API_KEY" ]      && echo "VirusTotal  ✅" || echo "VirusTotal  ❌"
-[ -n "$SHODAN_API_KEY" ]  && echo "Shodan      ✅" || echo "Shodan      ❌"
-[ -n "$ABUSEIPDB_KEY" ]   && echo "AbuseIPDB   ✅" || echo "AbuseIPDB   ❌"
-[ -n "$URLSCAN_KEY" ]     && echo "URLScan.io  ✅" || echo "URLScan.io  ❌"
-```
+### Phase 1d — Advanced Detection
+| # | Module | Description |
+|---|--------|-------------|
+| 87 | HTTP Smuggling | CL.TE, TE.CL, TE.TE raw socket smuggling |
+| 88 | Backup File Discovery | 30+ extensions, 80+ paths |
+| 89 | Email Security | SPF, DKIM, DMARC validation |
 
-### How to get free API keys:
+### Phase 2 — Web Application Analysis
+| # | Module | Description |
+|---|--------|-------------|
+| 11 | Tech Detection | Technology fingerprinting |
+| 12 | HTTP Methods | Dangerous method detection (PUT, DELETE, TRACE) |
+| 13 | Headers | Security header analysis |
+| 14 | Sensitive Files | Exposed config/backup file discovery |
+| 15 | Cookies | Cookie security flag analysis |
+| 16 | SSL/TLS | Certificate and cipher analysis |
+| 17 | SSTI | Server-Side Template Injection |
+| 18 | Open Redirect | Unvalidated redirect detection |
+| 19 | XSS | Reflected Cross-Site Scripting |
+| 20 | CMDi | OS Command Injection |
+| 21 | SQLi | SQL Injection (UNION, error-based, POST) |
+| 22 | LFI | Local File Inclusion |
+| 23 | CORS | Cross-Origin Resource Sharing misconfiguration |
+| 24 | Directory Brute | Directory and file brute-force |
+| 25 | XXE | XML External Entity injection |
+| 26 | POST Injection | POST parameter injection |
+| 27 | Stored XSS | Persistent Cross-Site Scripting |
+| 28 | Host Header Injection | HTTP Host header manipulation |
+| 29 | CRLF | Carriage Return Line Feed injection |
+| 30 | IDOR | Insecure Direct Object Reference |
+| 31 | Subdomain Takeover | Dangling DNS / unclaimed services |
+| 32 | DNS AXFR | DNS zone transfer attempt |
+| 33 | Smuggling | HTTP request smuggling |
+| 34 | GraphQL | GraphQL introspection and injection |
+| 35 | Rate Limit | Rate limiting bypass detection |
+| 36 | CSRF | Cross-Site Request Forgery |
+| 37 | SSRF | Server-Side Request Forgery |
+| 38 | PrivEsc | Privilege escalation indicators |
+| 39 | Auth Bypass | Authentication bypass techniques |
+| 40 | JWT | JWT algorithm confusion, JWKS forging |
 
-| Service | URL | Free Limit |
-|---------|-----|-----------|
-| VirusTotal | virustotal.com → Profile → API Key | 500 req/day |
-| Shodan | account.shodan.io → Overview → API Key | 100 queries/month |
-| AbuseIPDB | abuseipdb.com/account/api-key | 1,000 req/day |
-| URLScan.io | urlscan.io/user/profile → API Key | 100 req/hour |
+### Phase 2b — Advanced Modules (41–53)
+| # | Module | Description |
+|---|--------|-------------|
+| 41–53 | Advanced Checks | Prototype pollution, cache poisoning, WebSocket, OAuth, SAML, and more |
+
+### Phase 2d — NIKTO/ZAP-Style Checks
+| # | Module | Description |
+|---|--------|-------------|
+| 54 | Default Creds | Default credential testing |
+| 55 | Info Disclosure | Sensitive information disclosure |
+| 56 | ZAP Passive | ZAP passive scan integration |
+| 57 | Server Hardening | Server configuration review |
+
+### Phase 2e — v11.5 New Modules
+| # | Module | Description |
+|---|--------|-------------|
+| 58 | Crawler | Full site crawler |
+| 59 | SSPP | Server-Side Prototype Pollution |
+| 60 | NoSQL Injection | MongoDB/NoSQL injection |
+| 61 | File Upload | Malicious file upload testing |
+| 62 | Account Enumeration | Username/account enumeration |
+| 63 | PostMessage/Storage | Client-side storage and postMessage abuse |
+| 64 | Login Brute-Force | Login form brute-force |
+| 65 | OOB Blind | Out-of-band blind vulnerability detection |
+| 66–70 | Additional v11.5 | Further extended checks |
+| 71–76 | ZAP/OWASP CLI | Extended ZAP and OWASP tool modules |
+
+### Phase 3 — AI & API
+| # | Module | Description |
+|---|--------|-------------|
+| **90** | **LLM AI Triage** | **AI-powered vulnerability analysis** (Claude/GPT/Gemini) |
+| **91** | **OpenAPI Ingestion** | **Swagger 2.0 + OpenAPI 3.x endpoint auto-discovery** |
 
 ---
 
-### Update webscan after git pull:
+## Reports
 
-```bash
-cd ~/webscan-pro
-git pull
-sudo cp webscan_pro.py /opt/webscan_pro/webscan_pro.py
-webscan --version
-```
+Each scan generates 4 report files:
+
+| Format | Description |
+|--------|-------------|
+| **HTML** | Interactive report with full findings |
+| **JSON** | Machine-readable structured output |
+| **PDF** | Professional report for clients |
+| **Expert HTML** | Validation report with technical details |
+
+Reports saved to: `~/webscan-reports/`
 
 ---
 
-## Module Keys (for --only flag)
+## AI Triage
 
-Use `--only` with a comma-separated list of module keys to target specific checks.
+WebScan Pro supports AI-powered vulnerability analysis via multiple providers:
 
-### Phase 1 — Recon
+| Provider | Model | Env Variable |
+|----------|-------|-------------|
+| Anthropic | claude-3-haiku | `ANTHROPIC_API_KEY` |
+| OpenAI | gpt-4o-mini | `OPENAI_API_KEY` |
+| Google | gemini-1.5-flash | `GOOGLE_API_KEY` |
+| Ollama | llama3 (local) | *(no key needed)* |
 
-| Key | Module |
-|-----|--------|
-| `waf` | WAF Detection |
-| `ip_info` | IP / ASN Info |
-| `ports` | Port Scan |
-| `subdomains` | Subdomain Enumeration |
-| `api_intel` | Threat Intelligence (VirusTotal + Shodan + AbuseIPDB + URLScan.io) |
+Provider auto-detected in priority order: Anthropic → OpenAI → Google → Ollama
 
-### Phase 1b — OSINT Intelligence
-
-| Key | Module |
-|-----|--------|
-| `osint_email` | Email Harvest (crt.sh, security.txt, mailto links) |
-| `osint_dns` | DNS Intelligence (SPF, DMARC, DKIM, MX) |
-| `osint_dorks` | Google Dork Generator (16 targeted dorks) |
-| `osint_breach` | Data Breach Check (HIBP, public pastes) |
-| `osint_github` | GitHub Exposure (unauthenticated code search) |
-| `osint_js` | JavaScript Secrets Scan (API keys, tokens, endpoints) |
-
-### Phase 2 — Core Scanning
-
-| Key | Module | WSTG | ASVS |
-|-----|--------|------|------|
-| `headers` | Security Headers | WSTG-CONF-07 | ASVS-14.4.1 |
-| `sqli` | SQL Injection | WSTG-INPV-05 | ASVS-5.3.4 |
-| `xss` | Reflected XSS | WSTG-CLNT-01 | ASVS-5.3.3 |
-| `lfi` | Local File Inclusion | WSTG-ATHZ-01 | ASVS-5.3.12 |
-| `ssrf` | SSRF | WSTG-INPV-19 | ASVS-5.3.17 |
-| `xxe` | XXE Injection | WSTG-INPV-07 | ASVS-5.5.2 |
-| `cors` | CORS Misconfiguration | WSTG-CLNT-07 | ASVS-14.5.3 |
-| `csrf` | CSRF | WSTG-SESS-05 | ASVS-4.2.2 |
-| `redirect` | Open Redirect | WSTG-CLNT-04 | ASVS-5.1.5 |
-| `cookies` | Cookie Security | WSTG-SESS-02 | ASVS-3.4.1 |
-| `ssl` | SSL/TLS Analysis | WSTG-CRYP-01 | ASVS-9.1.1 |
-| `sensitive` | Sensitive File Exposure | WSTG-CONF-10 | ASVS-8.3.4 |
-| `methods` | HTTP Methods | WSTG-CONF-06 | ASVS-14.5.1 |
-| `tech` | Technology Fingerprint | WSTG-INFO-02 | ASVS-14.2.1 |
-| `ssti` | SSTI | WSTG-INPV-18 | ASVS-5.3.17 |
-| `cmdi` | Command Injection | WSTG-INPV-12 | ASVS-5.3.8 |
-| `jwt` | JWT Vulnerabilities | WSTG-SESS-10 | ASVS-3.5.3 |
-| `authn_bypass` | Authentication Bypass | WSTG-ATHN-01 | ASVS-2.1.1 |
-| `graphql` | GraphQL Security | WSTG-INPV-11 | ASVS-13.1.1 |
-| `stored_xss` | Stored XSS | WSTG-INPV-02 | ASVS-5.3.3 |
-| `hostheader` | Host Header Injection | WSTG-INPV-17 | ASVS-5.3.2 |
-| `crlf` | CRLF Injection | WSTG-INPV-15 | ASVS-5.3.2 |
-| `idor` | IDOR | WSTG-ATHZ-04 | ASVS-4.2.1 |
-| `smuggling` | HTTP Request Smuggling | WSTG-INPV-13 | ASVS-14.5.1 |
-
-### Phase 2b — Advanced
-
-| Key | Module |
-|-----|--------|
-| `oauth2` | OAuth 2.0 Flaws |
-| `hpp` | HTTP Parameter Pollution |
-| `cache_poison` | Cache Poisoning |
-| `deserial` | Deserialization |
-| `api_sec` | API Security / BOLA |
-| `biz_logic` | Business Logic Flaws |
-
-### Phase 2c — Advanced v11
-
-| Key | Module |
-|-----|--------|
-| `websocket` | WebSocket Security |
-| `saml` | SAML Misconfiguration |
-| `otp_bypass` | 2FA / OTP Bypass |
-| `dom_xss` | DOM-based XSS |
-| `email_inject` | Email Header Injection |
-
-### Phase 2d — Nikto/ZAP-style
-
-| Key | Module |
-|-----|--------|
-| `default_creds` | Default Credentials Scanner |
-| `srv_hardening` | Server Hardening & CGI |
-| `info_disclosure` | Information Disclosure |
-| `zap_passive` | ZAP-style Passive Analysis |
-
-### Phase 2e — New Modules v11.5–v11.7
-
-| Key | Module | WSTG | ASVS |
-|-----|--------|------|------|
-| `crawler` | Web Crawler/Spider | WSTG-INFO-05 | ASVS-5.1.1 |
-| `cloud_bucket` | Cloud Storage Exposure (S3, GCS, Azure) | WSTG-CONF-10 | ASVS-14.2.3 |
-| `mass_assignment` | Mass Assignment | WSTG-ATHZ-01 | ASVS-4.2.1 |
-| `acct_takeover` | Account Takeover — password reset flaws | WSTG-ATHN-01 | ASVS-2.1.1 |
-| `redos` | ReDoS — RegEx Denial of Service | WSTG-BUSL-09 | ASVS-5.3.17 |
-| `clickjacking` | Clickjacking | WSTG-CLNT-09 | ASVS-14.4.7 |
-| `dom_xss` | DOM-based XSS | WSTG-CLNT-01 | ASVS-5.3.3 |
-| `cve_scan` | CVE Mapping (44 CVEs, 14 stacks) | WSTG-INFO-02 | ASVS-14.2.1 |
-| `s3_brute` | S3 Bucket Brute-Force | WSTG-CONF-10 | ASVS-14.2.3 |
-| `wayback_urls` | Wayback / Archive URLs | WSTG-INFO-01 | ASVS-8.3.4 |
-| `param_discover` | Parameter Discovery | WSTG-INFO-05 | ASVS-5.1.1 |
-| `race_condition` | Race Condition | WSTG-BUSL-09 | ASVS-11.1.6 |
-| `waf_bypass` | WAF Bypass | WSTG-CONF-07 | ASVS-14.4.1 |
-| **`nosql_inject`** | **NoSQL Injection (MongoDB $ne/$gt/$regex)** | **WSTG-INPV-01** | **ASVS-5.3.4** |
-| **`sspp`** | **Server-Side Prototype Pollution** | **WSTG-CLNT-10** | **ASVS-5.3.17** |
-| **`oob_blind`** | **OOB Blind SSRF/XXE (interactsh)** | **WSTG-INPV-19** | **ASVS-5.5.2** |
-| **`file_upload`** | **Malicious File Upload (RCE)** | **WSTG-BUSL-08** | **ASVS-12.2.1** |
-| **`postmessage`** | **PostMessage & Browser Storage** | **WSTG-CLNT-10** | **ASVS-5.3.3** |
-| **`acct_enum`** | **Account Enumeration** | **WSTG-IDNT-04** | **ASVS-2.7.1** |
-| **`login_brute`** | **Expert Login Brute-Force (L1–L4)** | **WSTG-ATHN-03** | **ASVS-2.2.1** |
-
-**Example — targeted scan:**
 ```bash
-webscan https://target.com --scope sqli,xss,jwt,cors,headers -y
-```
-
-**Example — CI/CD pipeline (fail on high+critical):**
-```bash
-webscan https://target.com -y --fail-on-severity high
-```
-
-**Example — credential stuffing + brute-force:**
-```bash
-webscan https://target.com --combo breached_creds.txt -y
-webscan https://target.com --spray "Summer2024!" -y
+python3 webscan_pro.py https://target.com --llm-triage
 ```
 
 ---
 
-## What's New in v11.7
+## OpenVAS Integration
 
-| Feature | Details |
-|---------|---------|
-| **77 Modules** | 6 new modules added (was 71) |
-| **WSTG Mapping** | Every finding maps to OWASP Web Security Testing Guide ID (e.g. WSTG-INPV-05) |
-| **ASVS Mapping** | Every finding maps to ASVS v5.0 control ID (e.g. ASVS-5.3.4) |
-| **Code Snippets** | Remediation fields include fix examples and verification commands |
-| **NoSQL Injection (M73)** | MongoDB $ne/$gt/$regex operator auth bypass + GET param injection |
-| **Prototype Pollution (M74)** | SSPP via __proto__ / constructor.prototype POST to API endpoints |
-| **OOB Blind (M75)** | Out-of-band Blind SSRF (AWS/GCP/Azure metadata timing) + Blind XXE |
-| **File Upload (M76)** | PHP/JSP/ASPX shell upload, double extension, null byte, MIME bypass |
-| **PostMessage (M77)** | Cross-origin postMessage wildcard + localStorage sensitive data detection |
-| **Account Enumeration (M78)** | Different error messages for valid vs invalid users + response size analysis |
-| **CI/CD `--fail-on-severity`** | Pipeline exits with code 1 if findings meet/exceed threshold severity |
+WebScan Pro integrates with GVM/OpenVAS for professional vulnerability scanning:
+
+```bash
+# Ensure GVM is running
+sudo gvm-start
+
+# Set credentials in ~/.webscan_keys
+export OPENVAS_HOST="127.0.0.1"
+export OPENVAS_USER="admin"
+export OPENVAS_PASS="your_password"
+
+# Run OpenVAS module
+source ~/.webscan_keys
+python3 webscan_pro.py https://target.com --only openvas_scan
+```
+
+The scanner automatically uses `gvm-cli` with socket connection and proper privilege handling.
 
 ---
 
-## Output Files
+## OpenAPI / Swagger Support
 
-Every scan generates 4 reports in `~/webscan-reports/` (or the path set with `-o`):
+Automatically discover and test all API endpoints from an OpenAPI spec:
 
-| File | Description |
-|------|-------------|
-| `webscanpro_<timestamp>.html` | Full interactive HTML report (Confirmed/Potential split) |
-| `webscanpro_<timestamp>.json` | Machine-readable JSON (for `--compare`, CI/CD) |
-| `webscanpro_<timestamp>.pdf` | PDF export (requires `weasyprint`) |
-| `webscanpro_<timestamp>_expert.html` | **Expert Validation Report** — Critical/High only, manual verification commands |
-
-**PDF:** Auto-generated if `weasyprint` is installed. Install with:
 ```bash
-pip3 install weasyprint --break-system-packages
+# From URL
+python3 webscan_pro.py https://api.target.com --openapi https://api.target.com/swagger.json
+
+# From local file
+python3 webscan_pro.py https://api.target.com --openapi ./api-spec.yaml
 ```
+
+Supports:
+- Swagger 2.0
+- OpenAPI 3.x (JSON and YAML)
+- Automatic endpoint extraction and injection point discovery
 
 ---
 
-## Report Contents
+## Checkpoint / Resume
 
-Each finding includes:
+Long scans auto-save progress. If interrupted, simply re-run the same command:
 
-- **Title** and **Severity** (Critical / High / Medium / Low / Info)
-- **OWASP Top 10 (2021)** category (A01–A10)
-- **WSTG ID** (e.g. WSTG-INPV-05) — Web Security Testing Guide
-- **ASVS ID** (e.g. ASVS-5.3.4) — Application Security Verification Standard v5.0
-- **CWE** reference number
-- **CVSS v3.1** base score
-- **URL** and **Evidence** (parameter, payload, response)
-- **Recommendation** with code snippets and fix examples
-
----
-
-## Examples
-
-**CTF / lab target:**
 ```bash
-webscan https://192.168.56.101 -y
+# Start scan
+python3 webscan_pro.py https://target.com
+
+# If interrupted, resume:
+python3 webscan_pro.py https://target.com
+# → Automatically skips completed modules
 ```
 
-**Bug bounty (quiet, rate-limited, authenticated):**
+To start fresh:
 ```bash
-webscan https://app.target.com -q --rate 0.5 -c "session=abc123" -y
-```
-
-**Internal API audit:**
-```bash
-webscan https://api.internal.com --scope api_sec,authn_bypass,jwt,graphql,cors,nosql_inject,sspp -y
-```
-
-**Full scan through Burp with Burp XML export:**
-```bash
-webscan https://target.com --proxy http://127.0.0.1:8080 --burp -y
-```
-
-**Compare before/after scans:**
-```bash
-webscan --compare ~/webscan-reports/scan_before.json ~/webscan-reports/scan_after.json
-```
-
-**CI/CD — fail pipeline on Critical/High:**
-```bash
-webscan https://staging.app.com -y -q --fail-on-severity high
-echo "Exit: $?"  # 0 = pass, 1 = fail
+rm ~/webscan-reports/checkpoint_*.json
 ```
 
 ---
 
-## File Structure
+## Findings Structure
+
+Every finding includes:
 
 ```
-webscan-pro/
-├── webscan_pro.py    # Main scanner (~9,481 lines, single file, 77 modules)
-├── install.sh        # Kali Linux installer
-├── wordlist.txt      # 575-entry directory wordlist
-└── README.md         # This file
+Severity   : Critical / High / Medium / Low / Info
+CVSS Score : 0.0 – 10.0 (v3.1)
+OWASP      : A01:2021 – A10:2021
+CWE        : CWE-XXX
+WSTG       : WSTG-XXXX-XX
+Evidence   : Proof of vulnerability
+Remediation: Fix guidance
 ```
 
 ---
 
-## Legal
+## Legal Disclaimer
 
-This tool is for **authorized penetration testing only**.  
-Always obtain written permission before scanning any system.  
-Unauthorized use is illegal and unethical.
+This tool is provided for **authorized security testing and educational purposes only**.
+
+- Always obtain **written permission** from the target owner before scanning
+- Unauthorized scanning may violate computer crime laws
+- The authors assume no liability for misuse
+
+---
+
+## License
+
+MIT License — see [LICENSE](LICENSE) for details.
