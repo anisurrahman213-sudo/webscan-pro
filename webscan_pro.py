@@ -1409,7 +1409,7 @@ def llm_triage_scan():
             "max_tokens": 300,
             "messages": [{"role": "user", "content": prompt}]
         }).encode()
-        _req = urllib.request.Request(
+        _req = _ur.Request(
             "https://api.anthropic.com/v1/messages",
             data=_body,
             headers={"x-api-key": _anthropic_key, "anthropic-version": "2023-06-01",
@@ -1425,7 +1425,7 @@ def llm_triage_scan():
             "max_tokens": 300,
             "messages": [{"role": "user", "content": prompt}]
         }).encode()
-        _req = urllib.request.Request(
+        _req = _ur.Request(
             "https://api.openai.com/v1/chat/completions",
             data=_body,
             headers={"Authorization": f"Bearer {_openai_key}",
@@ -1438,8 +1438,8 @@ def llm_triage_scan():
         import urllib.request as _ur
         _url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={_google_key}"
         _body = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode()
-        _req = urllib.request.Request(_url, data=_body,
-                                      headers={"Content-Type": "application/json"})
+        _req = _ur.Request(_url, data=_body,
+                           headers={"Content-Type": "application/json"})
         with _ur.urlopen(_req, timeout=20) as _r:
             _d = json.loads(_r.read())
             return _d["candidates"][0]["content"]["parts"][0]["text"]
@@ -1451,7 +1451,7 @@ def llm_triage_scan():
             "max_tokens": 300,
             "messages": [{"role": "user", "content": prompt}]
         }).encode()
-        _req = urllib.request.Request(
+        _req = _ur.Request(
             "https://api.groq.com/openai/v1/chat/completions",
             data=_body,
             headers={"Authorization": f"Bearer {_groq_key}",
@@ -1466,8 +1466,8 @@ def llm_triage_scan():
         _body = json.dumps({
             "model": _ollama_model, "prompt": prompt, "stream": False
         }).encode()
-        _req = urllib.request.Request(f"{_base}/api/generate", data=_body,
-                                      headers={"Content-Type": "application/json"})
+        _req = _ur.Request(f"{_base}/api/generate", data=_body,
+                           headers={"Content-Type": "application/json"})
         with _ur.urlopen(_req, timeout=60) as _r:
             _d = json.loads(_r.read())
             return _d.get("response","")
