@@ -5423,10 +5423,8 @@ def parse_args():
                    help="Generate AI attack path graph after scan")
     p.add_argument("--cred-stuff",     action="store_true",
                    help="Run credential stuffing simulation")
-    p.add_argument("--spray",          action="store_true",
-                   help="Run password spraying simulation")
-    p.add_argument("--no-smuggling",   action="store_true",
-                   help="Skip HTTP Request Smuggling test (Module 125)")
+    p.add_argument("--spray-attack",   action="store_true",
+                   help="Run password spraying simulation (v15.0)")
     p.add_argument("--no-websocket",   action="store_true",
                    help="Skip WebSocket security test (Module 127)")
     p.add_argument("--spray-user-list",default="",
@@ -6024,28 +6022,27 @@ def main():
         html_path = os.path.join(args.output, "report_error.html")
         json_path = os.path.join(args.output, "report_error.json")
         expert_path = None
-    # v14.0 — Compliance report
-    if getattr(args, "compliance", False):
-        try:
-            ts_comp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            comp_path = os.path.join(args.output, f"webscanpro_{ts_comp}_compliance.html")
-            _build_compliance_report(url, comp_path)
-        except Exception as _ce:
-            warn(f"Compliance report error: {_ce}")
+    # v15.0 — Compliance report (always auto-generated)
+    try:
+        ts_comp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        comp_path = os.path.join(args.output, f"webscanpro_{ts_comp}_compliance.html")
+        _build_compliance_report(url, comp_path)
+        good(f"Compliance report: {comp_path}")
+    except Exception as _ce:
+        warn(f"Compliance report error: {_ce}")
     # v14.0 — Scan history
     try:
         save_scan_history(url, report_path=html_path if html_path else "")
     except Exception as _he:
         warn(f"History save error: {_he}")
-    # v15.0 — Attack Path Graph
-    if getattr(args, "attack_graph", False):
-        try:
-            ts_ag = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            ag_path = os.path.join(args.output, f"webscanpro_{ts_ag}_attack_graph.html")
-            _build_attack_path_graph(url, ag_path)
-            good(f"Attack Path Graph: {ag_path}")
-        except Exception as _age:
-            warn(f"Attack graph error: {_age}")
+    # v15.0 — Attack Path Graph (always auto-generated)
+    try:
+        ts_ag = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        ag_path = os.path.join(args.output, f"webscanpro_{ts_ag}_attack_graph.html")
+        _build_attack_path_graph(url, ag_path)
+        good(f"Attack Path Graph: {ag_path}")
+    except Exception as _age:
+        warn(f"Attack graph error: {_age}")
     # v14.0 — Webhook notification
     _webhook_url = getattr(args, "webhook", "") or os.environ.get("WEBSCAN_WEBHOOK","")
     if _webhook_url:
@@ -6223,7 +6220,7 @@ def main():
     # Credential Stuffing & Password Spraying (opt-in)
     if getattr(args, "cred_stuff", False):
         credential_stuffing_sim(url)
-    if getattr(args, "spray", False):
+    if getattr(args, "spray_attack", False):
         password_spray_sim(url)
 
     # ── SUMMARY ────────────────────────────────────────────────────
