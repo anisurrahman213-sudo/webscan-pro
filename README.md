@@ -9,11 +9,11 @@
  ╚══╝╚══╝ ╚══════╝╚═════╝ ╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═══╝    ╚═╝     ╚═╝  ╚═╝ ╚═════╝
 ```
 
-**Professional Web Security Scanner** | v12.0 | 91 Modules
+**Professional Web Security Scanner** | v12.0 | 92 Modules
 
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://python.org)
 [![Platform](https://img.shields.io/badge/Platform-Kali%20Linux-purple)](https://kali.org)
-[![Modules](https://img.shields.io/badge/Modules-91-green)]()
+[![Modules](https://img.shields.io/badge/Modules-92-green)]()
 [![License](https://img.shields.io/badge/License-MIT-yellow)]()
 
 > **For authorized security testing only. Always obtain written permission before scanning any target.**
@@ -22,15 +22,15 @@
 
 ## What is WebScan Pro?
 
-WebScan Pro is a comprehensive, single-file Python 3 web security scanner built for professional penetration testers. It combines 91 security modules — from basic recon to advanced vulnerability detection — with AI-powered triage and enterprise-grade tool integration.
+WebScan Pro is a comprehensive, single-file Python 3 web security scanner built for professional penetration testers. It combines 92 security modules — from basic recon to advanced attack-chain correlation — with AI-powered triage and enterprise-grade tool integration.
 
-**Single file. 91 modules. No setup complexity.**
+**Single file. 92 modules. No setup complexity.**
 
 ---
 
 ## Features
 
-- **91 Security Modules** — WAF detection, XSS, SQLi, LFI, SSRF, JWT, CORS, IDOR, and 83 more
+- **92 Security Modules** — WAF detection, XSS, SQLi, LFI, SSRF, JWT, CORS, IDOR, and 83 more
 - **AI Triage** — Automatic vulnerability analysis via Anthropic Claude, OpenAI GPT, or Google Gemini
 - **OpenAPI/Swagger Support** — Automatically test all API endpoints from a spec file
 - **Enterprise Tool Integration** — OpenVAS/GVM, Nessus, ZAP, Metasploit, tshark
@@ -169,7 +169,7 @@ python3 webscan_pro.py https://target.com
 
 ---
 
-## All 91 Modules
+## All 92 Modules
 
 ### Phase 1 — Reconnaissance
 | # | Module | Description |
@@ -270,11 +270,12 @@ python3 webscan_pro.py https://target.com
 | 66–70 | Additional v11.5 | Further extended checks |
 | 71–76 | ZAP/OWASP CLI | Extended ZAP and OWASP tool modules |
 
-### Phase 3 — AI & API
+### Phase 3 — AI, API & Attack-Chain
 | # | Module | Description |
 |---|--------|-------------|
 | **90** | **LLM AI Triage** | **AI-powered vulnerability analysis** (Claude/GPT/Gemini) |
 | **91** | **OpenAPI Ingestion** | **Swagger 2.0 + OpenAPI 3.x endpoint auto-discovery** |
+| **92** | **Attack-Chain Correlation** | **Multi-step attack path detection (rule-based + AI)** ⛓ |
 
 ---
 
