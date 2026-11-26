@@ -1,405 +1,364 @@
-# WebScan Pro
-
-```
-██╗    ██╗███████╗██████╗ ███████╗ ██████╗ █████╗ ███╗   ██╗    ██████╗ ██████╗  ██████╗
-██║    ██║██╔════╝██╔══██╗██╔════╝██╔════╝██╔══██╗████╗  ██║    ██╔══██╗██╔══██╗██╔═══██╗
-██║ █╗ ██║█████╗  ██████╔╝███████╗██║     ███████║██╔██╗ ██║    ██████╔╝██████╔╝██║   ██║
-██║███╗██║██╔══╝  ██╔══██╗╚════██║██║     ██╔══██║██║╚██╗██║    ██╔═══╝ ██╔══██╗██║   ██║
-╚███╔███╔╝███████╗██████╔╝███████║╚██████╗██║  ██║██║ ╚████║    ██║     ██║  ██║╚██████╔╝
- ╚══╝╚══╝ ╚══════╝╚═════╝ ╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═══╝    ╚═╝     ╚═╝  ╚═╝ ╚═════╝
-```
-
-**Professional Web Security Scanner** | v12.0 | 92 Modules
-
-[![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://python.org)
-[![Platform](https://img.shields.io/badge/Platform-Kali%20Linux-purple)](https://kali.org)
-[![Modules](https://img.shields.io/badge/Modules-92-green)]()
-[![License](https://img.shields.io/badge/License-MIT-yellow)]()
-
-> **For authorized security testing only. Always obtain written permission before scanning any target.**
+# WebScan Pro v15.0
+### Professional Web Application Penetration Testing Scanner
 
 ---
 
-## What is WebScan Pro?
+> **Single-file Python 3 security scanner** — 144 modules, 94 scan functions, 16,863 lines.
+> No installation required beyond `pip install -r requirements.txt`.
 
-WebScan Pro is a comprehensive, single-file Python 3 web security scanner built for professional penetration testers. It combines 92 security modules — from basic recon to advanced attack-chain correlation — with AI-powered triage and enterprise-grade tool integration.
-
-**Single file. 92 modules. No setup complexity.**
-
----
-
-## Features
-
-- **92 Security Modules** — WAF detection, XSS, SQLi, LFI, SSRF, JWT, CORS, IDOR, and 83 more
-- **AI Triage** — Automatic vulnerability analysis via Anthropic Claude, OpenAI GPT, or Google Gemini
-- **OpenAPI/Swagger Support** — Automatically test all API endpoints from a spec file
-- **Enterprise Tool Integration** — OpenVAS/GVM, Nessus, ZAP, Metasploit, tshark
-- **OSINT Intelligence** — Shodan, VirusTotal, URLScan, GitHub secrets, breach data, DNS recon
-- **Professional Reports** — HTML, JSON, PDF, and Expert Validation reports
-- **Checkpoint Resume** — Interrupted scans auto-resume from where they stopped
-- **CVSS v3.1 Scoring** — Every finding scored with CVSS, OWASP category, CWE, and WSTG reference
+**শুধুমাত্র authorized target-এ ব্যবহার করুন।**
 
 ---
 
-## Installation
+## পরিসংখ্যান
 
-### Requirements
+| বিষয় | সংখ্যা |
+|------|--------|
+| মোট Modules | 144 |
+| Scan Functions | 94 |
+| Finding Categories | 118 |
+| Total Lines | 16,863 |
+| File Size | ~879 KB |
+| Python Version | 3.8+ |
 
-- Kali Linux (recommended) or any Debian-based Linux
-- Python 3.8+
-- pip packages (auto-installed on first run)
+---
 
-### Quick Install
+## ইনস্টলেশন
 
 ```bash
-# Clone the repository
-git clone https://github.com/anisurrahman213-sudo/webscan-pro.git
-cd webscan-pro
+pip install requests colorama beautifulsoup4 urllib3
 
-# Install Python dependencies
-pip3 install requests dnspython python-whois colorama fpdf2 urllib3 --break-system-packages
-
-# Make globally accessible
-sudo ln -sf $(pwd)/webscan_pro.py /usr/local/bin/webscan
-chmod +x webscan_pro.py
-```
-
-### Optional Tools (for advanced modules)
-
-```bash
-# nmap — port scanning
-sudo apt install nmap -y
-
-# ZAP — passive and active scanning
-sudo apt install zaproxy -y
-
-# tshark — traffic analysis
-sudo apt install tshark -y
-
-# OpenVAS/GVM — vulnerability management
-sudo apt install gvm -y
-sudo gvm-setup
-sudo gvm-start
-
-# Metasploit — exploit framework (pre-installed on Kali)
-# msfconsole
+# Optional
+pip install httpx[http2]   # HTTP/2 deep testing
+pip install weasyprint      # PDF report
 ```
 
 ---
 
-## Configuration
-
-Create `~/.webscan_keys` for API keys:
-
-```bash
-# Threat Intelligence APIs
-export SHODAN_API_KEY="your_shodan_key"
-export VIRUSTOTAL_API_KEY="your_virustotal_key"
-export URLSCAN_API_KEY="your_urlscan_key"
-
-# AI Triage (at least one required for --llm-triage)
-export ANTHROPIC_API_KEY="your_anthropic_key"
-export OPENAI_API_KEY="your_openai_key"
-export GOOGLE_API_KEY="your_google_key"
-
-# OpenVAS/GVM
-export OPENVAS_HOST="127.0.0.1"
-export OPENVAS_PORT="9390"
-export OPENVAS_USER="admin"
-export OPENVAS_PASS="your_gvm_password"
-
-# Nessus Essentials
-export NESSUS_URL="https://127.0.0.1:8834"
-export NESSUS_API_KEY="your_nessus_api_key"
-```
-
-Auto-load on terminal start:
-```bash
-echo '[ -f ~/.webscan_keys ] && source ~/.webscan_keys' >> ~/.bashrc
-source ~/.bashrc
-```
-
----
-
-## Usage
+## দ্রুত শুরু
 
 ```bash
 # Basic scan
-source ~/.webscan_keys
 python3 webscan_pro.py https://target.com
 
-# Specific modules only
-python3 webscan_pro.py https://target.com --only sqli,xss,lfi
+# Fast mode
+python3 webscan_pro.py https://target.com --speed fast
 
-# With AI vulnerability triage
-python3 webscan_pro.py https://target.com --llm-triage
+# Thorough mode + সব রিপোর্ট
+python3 webscan_pro.py https://target.com --speed thorough --output ./reports --compliance --attack-graph
 
-# Choose AI provider
-python3 webscan_pro.py https://target.com --llm-triage --llm-provider openai
+# Authenticated scan
+python3 webscan_pro.py https://target.com \
+  --login-url https://target.com/login \
+  --login-user admin --login-pass secret123
 
-# Scan with OpenAPI/Swagger spec
-python3 webscan_pro.py https://target.com --openapi https://api.target.com/swagger.json
-
-# OpenAPI from local file
-python3 webscan_pro.py https://target.com --openapi ./openapi.yaml
-
-# Scope filter (scan specific paths only)
-python3 webscan_pro.py https://target.com --scope /api/,/admin/
-
-# Resume interrupted scan
-python3 webscan_pro.py https://target.com
-# (automatically resumes from checkpoint)
-
-# Fresh scan (clear checkpoint)
-rm ~/webscan-reports/checkpoint_*.json
-python3 webscan_pro.py https://target.com
+# Passive recon (target-এ কোনো active request নেই)
+python3 webscan_pro.py https://target.com --passive
 ```
 
 ---
 
-## CLI Flags
+## সব Argument
 
-| Flag | Description |
-|------|-------------|
-| `--only <modules>` | Comma-separated list of modules to run |
-| `--scope <paths>` | Limit scanning to specific URL paths |
-| `--llm-triage` | Enable AI-powered vulnerability triage |
-| `--llm-provider <name>` | AI provider: `anthropic`, `openai`, `google`, `ollama` |
-| `--openapi <url/file>` | Load OpenAPI/Swagger spec for API endpoint discovery |
+### মূল Options
 
----
+| Flag | বিবরণ |
+|------|-------|
+| `URL` | Target URL (required) |
+| `--speed {fast,normal,stealth,thorough}` | Scan speed (default: normal) |
+| `--output DIR` | Output directory for reports |
+| `--timeout N` | HTTP timeout seconds (default: 10) |
+| `--threads N` | Max parallel threads |
+| `--resume` | Interrupted scan resume করুন |
 
-## All 92 Modules
+### Authentication
 
-### Phase 1 — Reconnaissance
-| # | Module | Description |
-|---|--------|-------------|
-| 1 | WAF Detection | Identify Web Application Firewalls (31 signatures) |
-| 2 | Port Scan | Full port scan via nmap |
-| 3 | Subdomain Enum | Subdomain discovery and enumeration |
+| Flag | বিবরণ |
+|------|-------|
+| `--login-url URL` | Login page URL |
+| `--login-user USER` | Username |
+| `--login-pass PASS` | Password |
 
-### Phase 1a — Threat Intelligence
-| # | Module | Description |
-|---|--------|-------------|
-| 4 | API Intel | Shodan, VirusTotal, URLScan lookups |
+### Report ও Output
 
-### Phase 1b — OSINT
-| # | Module | Description |
-|---|--------|-------------|
-| 5 | OSINT Email | Email harvesting |
-| 6 | OSINT DNS Intel | DNS intelligence gathering |
-| 7 | OSINT GitHub | GitHub secret/key exposure |
-| 8 | OSINT Breach | Known breach data check |
-| 9 | OSINT Dorks | Google/Bing dork generation |
-| 10 | OSINT JS Secrets | JavaScript file secret extraction |
+| Flag | বিবরণ |
+|------|-------|
+| `--html` | HTML রিপোর্ট |
+| `--pdf` | PDF রিপোর্ট (weasyprint লাগবে) |
+| `--burp` | Burp Suite XML export |
+| `--compliance` | OWASP Top 10 + PCI-DSS compliance HTML |
+| `--attack-graph` | AI Attack Path Graph HTML |
 
-### Phase 1c — External Tool Integration
-| # | Module | Description |
-|---|--------|-------------|
-| 82 | ZAP Active Scan | OWASP ZAP CLI active scanning |
-| 83 | Metasploit | Metasploit auxiliary module integration |
-| 84 | tshark Traffic | Network traffic capture and analysis |
-| **85** | **OpenVAS** | **GVM/OpenVAS full vulnerability scan** ✅ |
-| 86 | Nessus | Nessus Essentials API integration |
+### Alert ও Notification
 
-### Phase 1d — Advanced Detection
-| # | Module | Description |
-|---|--------|-------------|
-| 87 | HTTP Smuggling | CL.TE, TE.CL, TE.TE raw socket smuggling |
-| 88 | Backup File Discovery | 30+ extensions, 80+ paths |
-| 89 | Email Security | SPF, DKIM, DMARC validation |
+| Flag | বিবরণ |
+|------|-------|
+| `--alert TOKEN:CHAT_ID` | Telegram alert |
+| `--slack WEBHOOK_URL` | Slack notification |
+| `--webhook URL` | Custom webhook (JSON POST) |
 
-### Phase 2 — Web Application Analysis
-| # | Module | Description |
-|---|--------|-------------|
-| 11 | Tech Detection | Technology fingerprinting |
-| 12 | HTTP Methods | Dangerous method detection (PUT, DELETE, TRACE) |
-| 13 | Headers | Security header analysis |
-| 14 | Sensitive Files | Exposed config/backup file discovery |
-| 15 | Cookies | Cookie security flag analysis |
-| 16 | SSL/TLS | Certificate and cipher analysis |
-| 17 | SSTI | Server-Side Template Injection |
-| 18 | Open Redirect | Unvalidated redirect detection |
-| 19 | XSS | Reflected Cross-Site Scripting |
-| 20 | CMDi | OS Command Injection |
-| 21 | SQLi | SQL Injection (UNION, error-based, POST) |
-| 22 | LFI | Local File Inclusion |
-| 23 | CORS | Cross-Origin Resource Sharing misconfiguration |
-| 24 | Directory Brute | Directory and file brute-force |
-| 25 | XXE | XML External Entity injection |
-| 26 | POST Injection | POST parameter injection |
-| 27 | Stored XSS | Persistent Cross-Site Scripting |
-| 28 | Host Header Injection | HTTP Host header manipulation |
-| 29 | CRLF | Carriage Return Line Feed injection |
-| 30 | IDOR | Insecure Direct Object Reference |
-| 31 | Subdomain Takeover | Dangling DNS / unclaimed services |
-| 32 | DNS AXFR | DNS zone transfer attempt |
-| 33 | Smuggling | HTTP request smuggling |
-| 34 | GraphQL | GraphQL introspection and injection |
-| 35 | Rate Limit | Rate limiting bypass detection |
-| 36 | CSRF | Cross-Site Request Forgery |
-| 37 | SSRF | Server-Side Request Forgery |
-| 38 | PrivEsc | Privilege escalation indicators |
-| 39 | Auth Bypass | Authentication bypass techniques |
-| 40 | JWT | JWT algorithm confusion, JWKS forging |
+### Scan Control
 
-### Phase 2b — Advanced Modules (41–53)
-| # | Module | Description |
-|---|--------|-------------|
-| 41–53 | Advanced Checks | Prototype pollution, cache poisoning, WebSocket, OAuth, SAML, and more |
+| Flag | বিবরণ |
+|------|-------|
+| `--no-nuclei` | Nuclei scan skip |
+| `--no-services` | Port scan skip |
+| `--no-smuggling` | HTTP Smuggling skip |
+| `--no-websocket` | WebSocket test skip |
 
-### Phase 2d — NIKTO/ZAP-Style Checks
-| # | Module | Description |
-|---|--------|-------------|
-| 54 | Default Creds | Default credential testing |
-| 55 | Info Disclosure | Sensitive information disclosure |
-| 56 | ZAP Passive | ZAP passive scan integration |
-| 57 | Server Hardening | Server configuration review |
+### v15.0 নতুন Flags
 
-### Phase 2e — v11.5 New Modules
-| # | Module | Description |
-|---|--------|-------------|
-| 58 | Crawler | Full site crawler |
-| 59 | SSPP | Server-Side Prototype Pollution |
-| 60 | NoSQL Injection | MongoDB/NoSQL injection |
-| 61 | File Upload | Malicious file upload testing |
-| 62 | Account Enumeration | Username/account enumeration |
-| 63 | PostMessage/Storage | Client-side storage and postMessage abuse |
-| 64 | Login Brute-Force | Login form brute-force |
-| 65 | OOB Blind | Out-of-band blind vulnerability detection |
-| 66–70 | Additional v11.5 | Further extended checks |
-| 71–76 | ZAP/OWASP CLI | Extended ZAP and OWASP tool modules |
+| Flag | বিবরণ |
+|------|-------|
+| `--passive` | Passive recon mode |
+| `--attack-graph` | Attack Path Graph তৈরি |
+| `--cred-stuff` | Credential stuffing simulation |
+| `--spray` | Password spraying simulation |
+| `--spray-user-list FILE` | Username list for spraying |
 
-### Phase 3 — AI, API & Attack-Chain
-| # | Module | Description |
-|---|--------|-------------|
-| **90** | **LLM AI Triage** | **AI-powered vulnerability analysis** (Claude/GPT/Gemini) |
-| **91** | **OpenAPI Ingestion** | **Swagger 2.0 + OpenAPI 3.x endpoint auto-discovery** |
-| **92** | **Attack-Chain Correlation** | **Multi-step attack path detection (rule-based + AI)** ⛓ |
+### History
+
+| Flag | বিবরণ |
+|------|-------|
+| `--history` | Past scan history দেখান |
 
 ---
 
-## Reports
+## Module তালিকা
 
-Each scan generates 4 report files:
+### Phase 0–8 — Core Modules (1–124)
 
-| Format | Description |
-|--------|-------------|
-| **HTML** | Interactive report with full findings |
-| **JSON** | Machine-readable structured output |
-| **PDF** | Professional report for clients |
-| **Expert HTML** | Validation report with technical details |
+| Range | Category |
+|-------|----------|
+| 1–10 | DNS, Subdomain, Port, Tech fingerprint, HTTP Headers, SSL/TLS, WHOIS, Robots |
+| 11–20 | Auth, Session, Cookie, CSRF, JWT, Login brute |
+| 21–35 | SQLi (GET/POST/Blind/Error), XSS (Reflected/Stored/DOM), CMDi, SSTI, XXE |
+| 36–50 | IDOR, Path Traversal, LFI, Auth bypass, Priv escalation |
+| 51–65 | Sensitive files, API keys, .env, Backup, Source code |
+| 66–80 | SSRF, Open redirect, CORS, Clickjacking, Security headers |
+| 81–97 | GraphQL basic, Admin panels, WAF detection, API, Nuclei, Exec report |
+| 98–107 | Nuclei, Authenticated scan, LDAP, XPath, RFI, Session fixation, Git/SVN, ENV, Source map, SOAP |
+| 108–117 | Exposed services (FTP/SSH/Telnet/SMTP/RDP/MongoDB/Redis/Elasticsearch/etc.) |
+| 118–124 | CSP analysis, Null byte, Business logic, JSON inject, API version, Unicode, Windows path |
 
-Reports saved to: `~/webscan-reports/`
+### Phase 9d — v15.0 Modules (125–144)
+
+| Module | নাম | CVSS | Severity |
+|--------|-----|------|----------|
+| **125** | HTTP Request Smuggling (CL.TE · TE.CL · TE.TE) | 9.0 | Critical |
+| **126** | Cache Poisoning / Web Cache Deception | 8.1 | High |
+| **127** | WebSocket Security (CSWSH · Injection · Hijacking) | 8.0 | High |
+| **128** | Race Condition (15 parallel Turbo Intruder-style) | 8.1 | High |
+| **129** | Mass Assignment / Over-posting | 8.8 | High |
+| **130** | HTTP Parameter Pollution (HPP) | 5.3 | Medium |
+| **131** | OAuth 2.0 / OIDC Misconfiguration (redirect_uri · state · PKCE) | 9.8 | Critical |
+| **132** | JWT Algorithm Confusion (alg:none · RS256→HS256 · kid inject) | 9.8 | Critical |
+| **133** | Subdomain Takeover (GitHub · Heroku · S3 · Azure · 25+ services) | 8.1 | High |
+| **134** | Email Header Injection (CC/BCC via contact forms) | 5.3 | Medium |
+| **135** | Cloud Storage Misconfiguration (S3 · GCS · Azure Blob) | 9.8 | Critical |
+| **136** | AWS IMDSv1 SSRF Chain (EC2 Metadata Credentials) | 10.0 | Critical |
+| **137** | Certificate Transparency Recon (crt.sh passive subdomain) | 5.3 | Info |
+| **138** | GraphQL Deep (Batching DoS · Introspection · Field Suggest) | 8.5 | High |
+| **139** | Deserialization Detection (Java · PHP · Python Pickle · Ruby Marshal) | 9.8 | Critical |
+| **140** | Advanced SSTI (Jinja2 · Twig · Freemarker · Smarty · Velocity · ERB) | 9.8 | Critical |
+| **141** | DOM Clobbering | 6.1 | Medium |
+| **142** | ReDoS — Regex Denial of Service | 7.5 | High |
+| **143** | HTTP/2 Header Injection + Rapid Reset (CVE-2023-44487) | 7.5 | High |
+| **144** | Passive Recon (URLScan · Wayback · HackerTarget · SecurityHeaders) | 5.3 | Info |
 
 ---
 
-## AI Triage
+## Professional Intelligence Features
 
-WebScan Pro supports AI-powered vulnerability analysis via multiple providers:
-
-| Provider | Model | Env Variable |
-|----------|-------|-------------|
-| Anthropic | claude-3-haiku | `ANTHROPIC_API_KEY` |
-| OpenAI | gpt-4o-mini | `OPENAI_API_KEY` |
-| Google | gemini-1.5-flash | `GOOGLE_API_KEY` |
-| Ollama | llama3 (local) | *(no key needed)* |
-
-Provider auto-detected in priority order: Anthropic → OpenAI → Google → Ollama
+### Attack Path Graph (`--attack-graph`)
+Scan শেষে interactive HTML graph তৈরি হয় (vis-network library):
+- Vulnerability node থেকে Impact node পর্যন্ত chain দেখায়
+- Critical vulnerability লাল রঙে হাইলাইট
+- Node click করলে details দেখা যায়
+- Browser-এ open করে zoom/pan করা যায়
 
 ```bash
-python3 webscan_pro.py https://target.com --llm-triage
+python3 webscan_pro.py https://target.com --attack-graph
+# Output: webscanpro_TIMESTAMP_attack_graph.html
+```
+
+### Credential Stuffing (`--cred-stuff`)
+25টি সবচেয়ে বেশি leaked credential pair দিয়ে login endpoint test।
+Rate limit detect করলে automatically stop।
+
+### Password Spraying (`--spray`)
+Common passwords দিয়ে discovered usernames-এর বিরুদ্ধে spray।
+Account lockout avoid করতে per-user limit মেনে চলে।
+
+### Compliance Report (`--compliance`)
+OWASP Top 10 2021 এবং PCI-DSS requirements-এর বিরুদ্ধে HTML রিপোর্ট।
+
+### Scan History (`--history`)
+SQLite database (`~/.webscan_history.db`) তে সব past scan সংরক্ষিত।
+
+---
+
+## Speed Modes
+
+| Mode | বিবরণ | কখন ব্যবহার |
+|------|-------|------------|
+| `fast` | Critical checks, কম timeout | Quick check, CTF |
+| `normal` | সব module, balanced | General use (default) |
+| `stealth` | ধীরে, User-Agent rotate, random delay | Production scan |
+| `thorough` | Maximum depth, সব payload | Full pentest |
+
+---
+
+## রিপোর্ট ধরন
+
+```
+./reports/
+├── webscanpro_TIMESTAMP_report.html      # Main report
+├── webscanpro_TIMESTAMP_executive.html   # Executive summary
+├── webscanpro_TIMESTAMP_compliance.html  # OWASP + PCI-DSS
+├── webscanpro_TIMESTAMP_attack_graph.html # Attack path graph
+└── webscanpro_TIMESTAMP_report.pdf       # PDF (optional)
 ```
 
 ---
 
-## OpenVAS Integration
+## Alert System
 
-WebScan Pro integrates with GVM/OpenVAS for professional vulnerability scanning:
+### Telegram
+```bash
+python3 webscan_pro.py https://target.com \
+  --alert "BOT_TOKEN:CHAT_ID"
+```
+
+### Slack
+```bash
+python3 webscan_pro.py https://target.com \
+  --slack "https://hooks.slack.com/services/..."
+```
+
+### Custom Webhook
+```bash
+python3 webscan_pro.py https://target.com \
+  --webhook "https://your-server.com/notify"
+```
+JSON POST পাঠাবে সব critical/high findings নিয়ে।
+
+---
+
+## OWASP Top 10 2021 Coverage
+
+| # | Category | Covered |
+|---|----------|---------|
+| A01 | Broken Access Control | IDOR, Path Traversal, WebSocket, SubTK |
+| A02 | Cryptographic Failures | SSL/TLS, JWT Confusion, Sensitive Data |
+| A03 | Injection | SQLi, XSS, SSTI, LDAP, XPath, Deserialization, GraphQL |
+| A04 | Insecure Design | Race Condition, Business Logic, Mass Assignment |
+| A05 | Security Misconfiguration | CORS, Headers, Cloud Storage, HTTP/2, Cache |
+| A06 | Vulnerable Components | CVE checks, Nuclei, ReDoS |
+| A07 | Auth Failures | OAuth, JWT, Session Fixation, Credential Stuffing |
+| A08 | Software Integrity | Deserialization, Pickle, Java gadget chains |
+| A09 | Logging Failures | Error disclosure, Debug info |
+| A10 | SSRF | SSRF, AWS IMDS, Cloud Metadata Chain |
+
+---
+
+## Finding Structure
+
+প্রতিটি finding-এ থাকে:
+
+```json
+{
+  "type":        "SQL Injection",
+  "severity":    "Critical",
+  "url":         "https://target.com/page?id=1",
+  "param":       "id",
+  "payload":     "' OR '1'='1",
+  "detail":      "বিস্তারিত বিবরণ...",
+  "owasp":       "A03:2021 — Injection",
+  "cwe":         "CWE-89",
+  "cvss":        9.8,
+  "remediation": "কীভাবে ঠিক করবেন..."
+}
+```
+
+---
+
+## Severity Scale
+
+| Severity | CVSS | উদাহরণ |
+|----------|------|--------|
+| Critical | 9.0–10.0 | SQLi RCE, JWT forgery, AWS IMDS, Cloud bucket |
+| High | 7.0–8.9 | XSS, SSRF, Race condition, WebSocket CSWSH |
+| Medium | 4.0–6.9 | CSRF, HPP, Email injection, DOM Clobbering |
+| Low | 1.0–3.9 | Information disclosure, missing headers |
+| Info | 0.0 | Technology detection, passive findings |
+
+---
+
+## উদাহরণ Workflow
 
 ```bash
-# Ensure GVM is running
-sudo gvm-start
+# ১. Bug bounty recon
+python3 webscan_pro.py https://target.com \
+  --passive --speed normal --output ./bugbounty
 
-# Set credentials in ~/.webscan_keys
-export OPENVAS_HOST="127.0.0.1"
-export OPENVAS_USER="admin"
-export OPENVAS_PASS="your_password"
+# ২. Full pentest
+python3 webscan_pro.py https://target.com \
+  --speed thorough \
+  --output ./reports \
+  --compliance \
+  --attack-graph \
+  --html
 
-# Run OpenVAS module
-source ~/.webscan_keys
-python3 webscan_pro.py https://target.com --only openvas_scan
-```
+# ৩. Stealth + Telegram alert
+python3 webscan_pro.py https://target.com \
+  --speed stealth \
+  --alert "BOT_TOKEN:CHAT_ID"
 
-The scanner automatically uses `gvm-cli` with socket connection and proper privilege handling.
+# ৪. Cloud security focus
+python3 webscan_pro.py https://target.com \
+  --speed thorough \
+  --passive \
+  --attack-graph \
+  --output ./cloud-audit
 
----
-
-## OpenAPI / Swagger Support
-
-Automatically discover and test all API endpoints from an OpenAPI spec:
-
-```bash
-# From URL
-python3 webscan_pro.py https://api.target.com --openapi https://api.target.com/swagger.json
-
-# From local file
-python3 webscan_pro.py https://api.target.com --openapi ./api-spec.yaml
-```
-
-Supports:
-- Swagger 2.0
-- OpenAPI 3.x (JSON and YAML)
-- Automatic endpoint extraction and injection point discovery
-
----
-
-## Checkpoint / Resume
-
-Long scans auto-save progress. If interrupted, simply re-run the same command:
-
-```bash
-# Start scan
-python3 webscan_pro.py https://target.com
-
-# If interrupted, resume:
-python3 webscan_pro.py https://target.com
-# → Automatically skips completed modules
-```
-
-To start fresh:
-```bash
-rm ~/webscan-reports/checkpoint_*.json
+# ৫. Auth testing
+python3 webscan_pro.py https://target.com \
+  --login-url https://target.com/login \
+  --login-user admin --login-pass admin123 \
+  --cred-stuff --spray
 ```
 
 ---
 
-## Findings Structure
+## Version History
 
-Every finding includes:
-
-```
-Severity   : Critical / High / Medium / Low / Info
-CVSS Score : 0.0 – 10.0 (v3.1)
-OWASP      : A01:2021 – A10:2021
-CWE        : CWE-XXX
-WSTG       : WSTG-XXXX-XX
-Evidence   : Proof of vulnerability
-Remediation: Fix guidance
-```
+| Version | Modules | নতুন কী |
+|---------|---------|---------|
+| v1.0 | 20 | Basic XSS, SQLi, Headers |
+| v5.0 | 50 | Auth, CSRF, CORS, SSL |
+| v10.0 | 80 | GraphQL, JWT, SSRF |
+| v12.0 | 92 | Attack chain, Executive report |
+| v13.0 | 97 | Telegram, Slack, PDF, Burp XML |
+| v14.0 | 124 | Nuclei, Auth scan, Services, Compliance, Webhook, SQLite |
+| **v15.0** | **144** | Smuggling, Cache Poison, WebSocket, Race Condition, Mass Assign, HPP, OAuth/OIDC, JWT Confusion, SubTK, Cloud Storage, AWS IMDS, CT Recon, GraphQL Deep, Deserialization, SSTI Adv, DOM Clobber, ReDoS, HTTP/2, Passive Recon, Attack Graph |
 
 ---
 
-## Legal Disclaimer
+## Technical Details
 
-This tool is provided for **authorized security testing and educational purposes only**.
-
-- Always obtain **written permission** from the target owner before scanning
-- Unauthorized scanning may violate computer crime laws
-- The authors assume no liability for misuse
+- **Language:** Python 3.8+
+- **Architecture:** Single-file, zero framework dependency
+- **Parallelism:** `ThreadPoolExecutor` + `as_completed()`
+- **State/Resume:** `_module_skip()` / `_module_done()` checkpoint pattern
+- **Storage:** SQLite (`~/.webscan_history.db`)
+- **HTTP Client:** `requests.Session()` global session + `httpx` (HTTP/2)
+- **Phase Order:** Phase 0 → 1 → 2 → 3 → 4 → 5 → 6 → 6b → 7 → 8 → 9 → 9b → 9c → 9d → 10 → 11 → 12
 
 ---
 
-## License
+## Legal Notice
 
-MIT License — see [LICENSE](LICENSE) for details.
+> এই টুল শুধুমাত্র **authorized** web application-এ ব্যবহারের জন্য।
+> Unauthorized scanning বেআইনি এবং শাস্তিযোগ্য অপরাধ।
+> Bug bounty / pentest scope-এর বাইরে ব্যবহার করবেন না।
