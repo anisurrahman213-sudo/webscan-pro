@@ -5573,7 +5573,7 @@ def attack_chain_correlation(url):
 
     if chains:
         for chain in chains:
-            vuln(f"⛓  CHAIN: {chain['name']}  |  CVSS: {chain.get('cvss','?')}  |  Impact: {chain.get('impact','?')}")
+            vuln(f"⛓  CHAIN: {chain['name']}  |  CVSS: {chain.get('cvss','?')}  |  Impact: {chain.get('impact','?')}", "Critical")
             for i, step in enumerate(chain.get("steps",[]), 1):
                 info(f"      Step {i}: {step}")
             add("attack_chains", {
