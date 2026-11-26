@@ -11834,10 +11834,6 @@ def account_enum_scan(url):
     _module_done("acct_enum")
 
 
-if __name__ == "__main__":
-    main()
-
-
 # ═══════════════════════════════════════════════════════════════════
 # WebScan Pro v13.0 — NEW MODULES & FEATURES
 # ═══════════════════════════════════════════════════════════════════
@@ -16858,3 +16854,8 @@ _V15_CAT_TITLES = {
 
 CAT_TITLES.update(_V15_CAT_TITLES)
 
+# ═══════════════════════════════════════════════════════════════════
+# Entry point — must be LAST so all functions above are defined
+# ═══════════════════════════════════════════════════════════════════
+if __name__ == "__main__":
+    main()
