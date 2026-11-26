@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# WebScan Pro v11.2 — Professional Penetration Testing Scanner
+# WebScan Pro v12.0 — Professional Penetration Testing Scanner
 
 import sys, os, re, time, socket, ssl, json, datetime, argparse, hashlib, hmac, subprocess
 import urllib3, requests, threading
@@ -371,6 +371,9 @@ CAT_META = {
 "nessus_scan":{"owasp":"A06:2021","owasp_name":"Vulnerable and Outdated Components","cwe":"CWE-200","cvss":8.5,
         "wstg":"WSTG-INFO-01","asvs":"V14.4",
         "biz":"Nessus comprehensive vulnerability scan identified critical security issues requiring immediate remediation."},
+"attack_chains":{"owasp":"A01:2021","owasp_name":"Broken Access Control","cwe":"CWE-693","cvss":9.5,
+        "wstg":"WSTG-ATHZ-01","asvs":"ASVS-4.1.1",
+        "biz":"Multiple vulnerabilities chained together create a critical attack path allowing full system compromise, data breach, or complete account takeover with minimal attacker skill required."},
 }
 
 CAT_TITLES = {
@@ -468,6 +471,7 @@ CAT_TITLES = {
     "http_smuggling":  ("🚢",  "HTTP Request Smuggling"),
     "backup_files":    ("🗄️",  "Backup & Sensitive File Discovery"),
     "email_security":  ("📧",  "Email Security (SPF / DKIM / DMARC)"),
+    "attack_chains":   ("⛓",   "Attack-Chain Correlation"),
 }
 
 # ─── Terminal UI ───────────────────────────────────────────────────
@@ -5358,6 +5362,239 @@ def parse_args():
                    help="Force specific LLM provider: anthropic|openai|google|groq|ollama (auto-detected by default)")
     return p.parse_args()
 
+# ═══ MODULE 92 — ATTACK-CHAIN CORRELATION ENGINE (v12.0) ══════════
+def _rule_based_chains(findings):
+    """Rule-based attack chain detection from known dangerous combinations."""
+    cats = set(f.get("category","") for f in findings)
+    chains = []
+
+    rules = [
+        {
+            "requires": {"authn_bypass", "idor"},
+            "name": "Account Takeover via Auth Bypass + IDOR",
+            "steps": [
+                "Exploit Authentication Bypass to gain unauthorized access",
+                "Use IDOR to access other users' accounts and resources",
+                "Exfiltrate or modify sensitive user data",
+            ],
+            "cvss": "9.1", "impact": "Full account takeover and data breach",
+            "mitigation": "Fix authentication logic and implement proper authorization checks on every object reference",
+        },
+        {
+            "requires": {"sqli", "authn_bypass"},
+            "name": "Database Dump via SQLi + Auth Bypass",
+            "steps": [
+                "Bypass authentication using SQL injection in login form",
+                "Enumerate database schema with UNION-based or error-based queries",
+                "Extract all credentials, PII, and payment records",
+            ],
+            "cvss": "9.8", "impact": "Complete database compromise and credential theft",
+            "mitigation": "Use prepared statements and implement strong authentication without SQL in auth flow",
+        },
+        {
+            "requires": {"ssrf", "cmdi"},
+            "name": "RCE via SSRF + Command Injection",
+            "steps": [
+                "Use SSRF to reach internal services (admin panels, metadata APIs)",
+                "Retrieve cloud credentials or internal service tokens",
+                "Chain with Command Injection for full Remote Code Execution",
+            ],
+            "cvss": "10.0", "impact": "Full server compromise and lateral movement to internal network",
+            "mitigation": "Implement SSRF allowlist, sanitize all command inputs, use least-privilege service accounts",
+        },
+        {
+            "requires": {"xss", "csrf"},
+            "name": "Session Hijacking via XSS + CSRF",
+            "steps": [
+                "Inject persistent XSS payload via vulnerable input",
+                "Steal session cookies or authentication tokens from victims",
+                "Perform CSRF attack using stolen credentials to take over account",
+            ],
+            "cvss": "8.8", "impact": "Session hijacking and unauthorized actions on behalf of users",
+            "mitigation": "Implement CSP, set HttpOnly cookies, enforce SameSite=Strict, add CSRF tokens",
+        },
+        {
+            "requires": {"lfi", "cmdi"},
+            "name": "RCE via LFI + Command Injection",
+            "steps": [
+                "Use LFI to read SSH private keys or configuration files",
+                "Leverage exposed credentials to authenticate to services",
+                "Execute commands via Command Injection for full RCE",
+            ],
+            "cvss": "9.9", "impact": "Full server compromise and persistent backdoor installation",
+            "mitigation": "Validate all file paths strictly, disable dangerous PHP functions, restrict file read permissions",
+        },
+        {
+            "requires": {"sqli", "xss"},
+            "name": "Stored Payload Persistence via SQLi + XSS",
+            "steps": [
+                "Use SQL Injection to write malicious XSS payload into database",
+                "Payload executes in browser of every user viewing affected page",
+                "Mass session theft and credential harvesting at scale",
+            ],
+            "cvss": "9.0", "impact": "Mass user compromise and large-scale data exfiltration",
+            "mitigation": "Use parameterized queries and encode all output with context-aware escaping",
+        },
+        {
+            "requires": {"authn_bypass", "privesc"},
+            "name": "Privilege Escalation via Auth Bypass + Admin Access",
+            "steps": [
+                "Bypass authentication to gain initial application access",
+                "Navigate to exposed admin panel or privileged endpoint",
+                "Escalate to administrative role for full application control",
+            ],
+            "cvss": "9.3", "impact": "Complete application takeover and admin-level access",
+            "mitigation": "Enforce strict authentication, hide admin interfaces, implement role-based access control",
+        },
+        {
+            "requires": {"http_smuggling", "xss"},
+            "name": "Cache Poisoning via HTTP Smuggling + XSS",
+            "steps": [
+                "Use HTTP Request Smuggling to poison shared cache",
+                "Inject XSS payload into cached response",
+                "Every user requesting the poisoned page executes the payload",
+            ],
+            "cvss": "9.0", "impact": "Widespread XSS affecting all users via poisoned cache",
+            "mitigation": "Fix HTTP/1.1 parsing inconsistencies, implement cache-control headers, sanitize all outputs",
+        },
+    ]
+
+    for rule in rules:
+        if rule["requires"].issubset(cats):
+            chains.append({k: v for k, v in rule.items() if k != "requires"})
+
+    return chains[:5]  # max 5 rule-based chains
+
+
+def _llm_attack_chains(findings, ak, ok, gk):
+    """Use LLM to identify multi-step attack chains from scan findings."""
+    import urllib.request as _ur, urllib.error as _ue
+    high_cats = [f["category"] for f in findings
+                 if f.get("severity","") in ("Critical","High","Medium")]
+    all_cats  = list(dict.fromkeys(high_cats + [f["category"] for f in findings]))
+    if not all_cats:
+        return []
+
+    prompt = (
+        "You are a senior penetration tester. The following vulnerability categories were found "
+        "on a web application during a security scan:\n\n"
+        f"Findings: {', '.join(all_cats[:25])}\n\n"
+        "Identify realistic multi-step attack chains an attacker could use by chaining these vulnerabilities. "
+        "Only include chains with 2 or more steps. Max 5 chains.\n\n"
+        "Respond ONLY with a valid JSON array (no markdown, no extra text):\n"
+        '[{"name":"Chain Name","steps":["Step 1","Step 2","Step 3"],'
+        '"cvss":"9.5","impact":"Business impact in 1 sentence",'
+        '"mitigation":"How to break the chain in 1 sentence"}]\n\n'
+        "If no meaningful chains exist, return: []"
+    )
+    try:
+        body = None
+        req  = None
+        if ak:
+            body = json.dumps({"model":"claude-3-haiku-20240307","max_tokens":800,
+                               "messages":[{"role":"user","content":prompt}]}).encode()
+            req  = _ur.Request("https://api.anthropic.com/v1/messages", data=body,
+                               headers={"x-api-key":ak,"anthropic-version":"2023-06-01",
+                                        "content-type":"application/json"})
+        elif ok:
+            body = json.dumps({"model":"gpt-4o-mini","max_tokens":800,
+                               "messages":[{"role":"user","content":prompt}]}).encode()
+            req  = _ur.Request("https://api.openai.com/v1/chat/completions", data=body,
+                               headers={"Authorization":f"Bearer {ok}",
+                                        "Content-Type":"application/json"})
+        elif gk:
+            _url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
+                    f"gemini-1.5-flash:generateContent?key={gk}")
+            body = json.dumps({"contents":[{"parts":[{"text":prompt}]}]}).encode()
+            req  = _ur.Request(_url, data=body,
+                               headers={"Content-Type":"application/json"})
+        if req is None:
+            return []
+        with _ur.urlopen(req, timeout=30) as r:
+            d = json.loads(r.read())
+            if ak:
+                text = d["content"][0]["text"]
+            elif ok:
+                text = d["choices"][0]["message"]["content"]
+            else:
+                text = d["candidates"][0]["content"]["parts"][0]["text"]
+        import re as _re
+        m = _re.search(r'\[.*?\]', text, _re.DOTALL)
+        if m:
+            return json.loads(m.group())
+    except Exception as _e:
+        warn(f"Attack-Chain LLM error: {_e}")
+    return []
+
+
+def attack_chain_correlation(url):
+    """MODULE 92 — Correlate all findings into multi-step attack chains."""
+    if _module_skip("attack_chains"):
+        info("Skipping Attack-Chain Correlation (already done)"); return
+
+    section("MODULE 92 — ATTACK-CHAIN CORRELATION ENGINE","⛓")
+
+    # Flatten all findings
+    all_findings = []
+    for cat, items in FINDINGS.items():
+        for item in (items if isinstance(items, list) else []):
+            if isinstance(item, dict):
+                all_findings.append({
+                    "category": cat,
+                    "severity": item.get("severity","Info"),
+                    "type":     item.get("type", cat),
+                })
+
+    if not all_findings:
+        info("Attack-Chain: No findings to correlate — scan found nothing to chain")
+        _module_done("attack_chains"); return
+
+    info(f"Attack-Chain: Analyzing {len(all_findings)} finding(s)...")
+
+    _ak = os.environ.get("ANTHROPIC_API_KEY","").strip()
+    _ok = os.environ.get("OPENAI_API_KEY","").strip()
+    _gk = os.environ.get("GOOGLE_API_KEY","").strip()
+
+    chains = []
+
+    # 1. Try LLM-based correlation
+    if _ak or _ok or _gk:
+        info("Attack-Chain: Running LLM correlation...")
+        chains = _llm_attack_chains(all_findings, _ak, _ok, _gk)
+        if chains:
+            info("Attack-Chain: LLM identified chains — supplementing with rule engine...")
+
+    # 2. Rule-based (always runs, deduplicates with LLM results)
+    rule_chains = _rule_based_chains(all_findings)
+    existing_names = {c["name"] for c in chains}
+    for rc in rule_chains:
+        if rc["name"] not in existing_names:
+            chains.append(rc)
+
+    if chains:
+        for chain in chains:
+            vuln(f"⛓  CHAIN: {chain['name']}  |  CVSS: {chain.get('cvss','?')}  |  Impact: {chain.get('impact','?')}")
+            for i, step in enumerate(chain.get("steps",[]), 1):
+                info(f"      Step {i}: {step}")
+            add("attack_chains", {
+                "type":        "Attack Chain",
+                "severity":    "Critical",
+                "chain_name":  chain["name"],
+                "steps":       chain.get("steps",[]),
+                "cvss":        chain.get("cvss","9.5"),
+                "impact":      chain.get("impact","Multi-step attack leading to full compromise"),
+                "mitigation":  chain.get("mitigation","Remediate all vulnerabilities in the chain"),
+                "url":         url,
+                "detail":      " → ".join(chain.get("steps",[])),
+                "remediation": chain.get("mitigation","Fix all individual vulnerabilities to break the chain"),
+            })
+        good(f"Attack-Chain: {len(chains)} attack chain(s) identified and added to report")
+    else:
+        good("Attack-Chain: No multi-step attack chains identified from current findings")
+
+    _module_done("attack_chains")
+
+
 # ═══ MAIN ═════════════════════════════════════════════════════════
 def main():
     global VERBOSE, QUIET, CHECKPOINT_FILE, SCAN_SCOPE, RATE_DELAY, TIMEOUT, THREADS
@@ -5485,7 +5722,7 @@ def main():
             info(f"Phase 0 complete: {len(OPENAPI_ENDPOINTS)} API endpoint(s) will be injected into scan modules")
 
     # ── PHASE 1: RECON ─────────────────────────────────────────────
-    section("PHASE 1 — RECONNAISSANCE","🔍")
+    section("PHASE 1 — RECONNAISSANCE (WAF · IP · Ports · Subdomains)","🔍")
     # waf + ip_info first (fast, ~1-2s each; sequential is fine)
     detect_waf(url)
     _ip_data    = get_ip_info(domain)
@@ -5506,14 +5743,14 @@ def main():
         else:
             info("Subdomain enum skipped (--no-subs)")
 
-    # ── PHASE 1a: THREAT INTELLIGENCE API ─────────────────────────
+    # ── PHASE 2: THREAT INTELLIGENCE API ──────────────────────────
     # Keys loaded from env vars — never hardcoded
     _vt_key      = os.environ.get("VT_API_KEY","").strip()
     _shodan_key  = os.environ.get("SHODAN_API_KEY","").strip()
     _abipdb_key  = os.environ.get("ABUSEIPDB_KEY","").strip()
     _urlscan_key = os.environ.get("URLSCAN_KEY","").strip()
     if any([_vt_key, _shodan_key, _abipdb_key, _urlscan_key]):
-        section("PHASE 1a — THREAT INTELLIGENCE (API)","🛡️")
+        section("PHASE 2 — THREAT INTELLIGENCE (Shodan · VirusTotal · URLScan)","🛡️")
         api_intelligence_scan(url, domain, _target_ip,
                               vt_key=_vt_key      or None,
                               shodan_key=_shodan_key   or None,
@@ -5522,9 +5759,9 @@ def main():
     else:
         info("API Intelligence: No API keys set — set VT_API_KEY, SHODAN_API_KEY, ABUSEIPDB_KEY, URLSCAN_KEY in env")
 
-    # ── PHASE 1c: EXTERNAL TOOL INTEGRATION ───────────────────────────
+    # ── PHASE 3: EXTERNAL TOOL INTEGRATION ────────────────────────────
     # ZAP, Metasploit, tshark, OpenVAS, Nessus (skips if tool not installed)
-    section("PHASE 1c — EXTERNAL TOOL INTEGRATION","🔧")
+    section("PHASE 3 — EXTERNAL TOOLS (ZAP · OpenVAS · Nessus · MSF · tshark)","🔧")
     _ext_tasks = [
         lambda: _run(zap_scan, url),
         lambda: _run(msf_http_scan, url, domain, _target_ip),
@@ -5536,9 +5773,9 @@ def main():
         _efuts = [_ep.submit(_t) for _t in _ext_tasks]
         for _f in as_completed(_efuts): _pass(_f)
 
-    # ── PHASE 1d: ADVANCED DETECTION ──────────────────────────────────
+    # ── PHASE 4: ADVANCED DETECTION ───────────────────────────────────
     # HTTP Smuggling, Backup Files, Email Security
-    section("PHASE 1d — ADVANCED DETECTION","🔬")
+    section("PHASE 4 — ADVANCED DETECTION (Smuggling · Backup · Email Security)","🔬")
     _adv_tasks = [
         lambda: _run(http_smuggling_scan, url),
         lambda: _run(backup_file_scan, url),
@@ -5548,8 +5785,8 @@ def main():
         _afuts = [_ea.submit(_t) for _t in _adv_tasks]
         for _f in as_completed(_afuts): _pass(_f)
 
-    # ── PHASE 1b: OSINT — all 6 modules parallel ───────────────────
-    section("PHASE 1b — OSINT INTELLIGENCE","🔎")
+    # ── PHASE 5: OSINT — all 6 modules parallel ────────────────────
+    section("PHASE 5 — OSINT INTELLIGENCE (Email · DNS · Dorks · Breach · GitHub · JS)","🔎")
     _osint_tasks = [
         lambda: _run(osint_email_harvest, domain),
         lambda: _run(osint_dns_intel, domain),
@@ -5562,8 +5799,8 @@ def main():
         _fosint = [_po.submit(t) for t in _osint_tasks]
         for _f in as_completed(_fosint): _pass(_f)
 
-    # ── PHASE 2: WEB / API — all modules parallel ──────────────────
-    section("PHASE 2 — WEB APPLICATION ANALYSIS","🕵")
+    # ── PHASE 6: WEB / API — all modules parallel ──────────────────
+    section("PHASE 6 — WEB APPLICATION ANALYSIS (SQLi · XSS · LFI · SSRF · JWT · +20 more)","🕵")
     _p2_tasks = [
         lambda: _run(detect_technology, url),
         lambda: _run(check_headers, url, out_dir=args.output),
@@ -5600,9 +5837,9 @@ def main():
         _futs2 = [_p2.submit(t) for t in _p2_tasks]
         for _f in as_completed(_futs2): _pass(_f)
 
-    # ── PHASE 2: OpenAPI injection (runs extra scans on API endpoints) ─
+    # ── PHASE 6b: OpenAPI injection (runs extra scans on API endpoints) ─
     if OPENAPI_ENDPOINTS:
-        section("PHASE 2 (OpenAPI) — API ENDPOINT INJECTION","🔗")
+        section("PHASE 6b — API ENDPOINT INJECTION (OpenAPI/Swagger)","🔗")
         info(f"Injecting {len(OPENAPI_ENDPOINTS)} OpenAPI endpoint(s) into SQLi, XSS, IDOR scanners...")
         _oapi_tasks = [
             lambda: _run(_openapi_inject_sqli, url),
@@ -5613,9 +5850,9 @@ def main():
             _oapi_futs = [_oapi_ex.submit(t) for t in _oapi_tasks]
             for _f in as_completed(_oapi_futs): _pass(_f)
 
-    # ── PHASE 2b + 2c: ADVANCED — all modules parallel ─────────────
+    # ── PHASE 7: ADVANCED SECURITY MODULES ─────────────────────────
     if not args.no_advanced:
-        section("PHASE 2b — ADVANCED SECURITY MODULES (34–47)","🚀")
+        section("PHASE 7 — ADVANCED SECURITY MODULES (OAuth · Cache · Prototype · WebSocket · +10)","🚀")
         _p2b_tasks = [
             lambda: _run(oauth2_scan, url),
             lambda: _run(hpp_scan, url),
@@ -5636,8 +5873,8 @@ def main():
             _futs2b = [_p2b.submit(t) for t in _p2b_tasks]
             for _f in as_completed(_futs2b): _pass(_f)
 
-        # ── PHASE 2d: NIKTO/ZAP-STYLE (54–57) ─────────────────────
-        section("PHASE 2d — NIKTO/ZAP-STYLE CHECKS (54–57)","🔍")
+        # ── PHASE 8: NIKTO/ZAP-STYLE (54–57) ──────────────────────
+        section("PHASE 8 — SPECIALIZED CHECKS (Default Creds · Hardening · ZAP Passive · Info Disclosure)","🔍")
         _p2d_tasks = [
             lambda: _run(default_creds_scan, url),
             lambda: _run(server_hardening_scan, url),
@@ -5650,8 +5887,8 @@ def main():
     else:
         info("Skipping Phase 2b+2c+2d advanced modules (--no-advanced)")
 
-    # ── PHASE 2e: v11.5 NEW MODULES (58–70) ────────────────────────
-    section("PHASE 2e — v11.5 NEW MODULES (58–70)","🆕")
+    # ── PHASE 9: EXTENDED MODULES (58–70) ──────────────────────────
+    section("PHASE 9 — EXTENDED MODULES (Crawler · Cloud · Brute-Force · Race · WAF-Bypass · +15)","🆕")
     _p2e_tasks = [
         lambda: _run(web_crawler_scan, url),
         lambda: _run(cloud_bucket_scan, url),
@@ -5684,8 +5921,8 @@ def main():
         _futs2e = [_p2e.submit(t) for t in _p2e_tasks]
         for _f in as_completed(_futs2e): _pass(_f)
 
-    # ── PHASE 3: REPORTS ───────────────────────────────────────────
-    section("PHASE 3 — REPORT GENERATION","📊")
+    # ── PHASE 10: REPORTS ──────────────────────────────────────────
+    section("PHASE 10 — REPORT GENERATION (HTML · JSON · PDF · Expert)","📊")
     # Auto-create output directory
     os.makedirs(args.output, exist_ok=True)
     try:
@@ -5715,7 +5952,8 @@ def main():
     except Exception as e:
         warn(f"PDF generation failed: {e}")
 
-    # ── PHASE END: LLM TRIAGE (post-scan AI analysis) ──────────────
+    # ── PHASE 11: LLM TRIAGE (post-scan AI analysis) ───────────────
+    section("PHASE 11 — LLM AI TRIAGE (False-Positive Filter · AI Analysis)","🤖")
     _do_triage = getattr(args, "llm_triage", False)
     # Also auto-trigger if any LLM key is set and --llm-triage not explicitly disabled
     _any_llm_key = any([
@@ -5743,6 +5981,11 @@ def main():
                     _do_triage = False
         if _do_triage or _any_llm_key:
             llm_triage_scan()
+
+    # ── PHASE 12: ATTACK-CHAIN CORRELATION ─────────────────────────
+    # Runs LAST — after all scans + LLM Triage so all findings are available
+    section("PHASE 12 — ATTACK-CHAIN CORRELATION ENGINE","⛓")
+    attack_chain_correlation(url)
 
     # ── SUMMARY ────────────────────────────────────────────────────
     counts = _sev_counts()
