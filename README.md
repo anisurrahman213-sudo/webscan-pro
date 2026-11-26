@@ -6,15 +6,15 @@
 > **Single-file Python 3 security scanner** — 144 modules, 94 scan functions, 16,863 lines.
 > No installation required beyond `pip install -r requirements.txt`.
 
-**শুধুমাত্র authorized target-এ ব্যবহার করুন।**
+**For authorized targets only. Unauthorized scanning is illegal.**
 
 ---
 
-## পরিসংখ্যান
+## Statistics
 
-| বিষয় | সংখ্যা |
-|------|--------|
-| মোট Modules | 144 |
+| Item | Count |
+|------|-------|
+| Total Modules | 144 |
 | Scan Functions | 94 |
 | Finding Categories | 118 |
 | Total Lines | 16,863 |
@@ -23,128 +23,128 @@
 
 ---
 
-## ইনস্টলেশন
+## Installation
 
 ```bash
 pip install requests colorama beautifulsoup4 urllib3
 
 # Optional
 pip install httpx[http2]   # HTTP/2 deep testing
-pip install weasyprint      # PDF report
+pip install weasyprint      # PDF report generation
 ```
 
 ---
 
-## দ্রুত শুরু
+## Quick Start
 
 ```bash
-# Basic scan
+# Basic scan — all reports auto-generated
 python3 webscan_pro.py https://target.com
 
 # Fast mode
 python3 webscan_pro.py https://target.com --speed fast
 
-# Thorough mode + সব রিপোর্ট
-python3 webscan_pro.py https://target.com --speed thorough --output ./reports --compliance --attack-graph
+# Thorough mode
+python3 webscan_pro.py https://target.com --speed thorough --output ./reports
 
 # Authenticated scan
 python3 webscan_pro.py https://target.com \
   --login-url https://target.com/login \
   --login-user admin --login-pass secret123
 
-# Passive recon (target-এ কোনো active request নেই)
+# Passive recon (no active requests to target)
 python3 webscan_pro.py https://target.com --passive
 ```
 
 ---
 
-## সব Argument
+## All Arguments
 
-### মূল Options
+### Core Options
 
-| Flag | বিবরণ |
-|------|-------|
+| Flag | Description |
+|------|-------------|
 | `URL` | Target URL (required) |
-| `--speed {fast,normal,stealth,thorough}` | Scan speed (default: normal) |
+| `--speed {fast,normal,stealth,thorough}` | Scan speed mode (default: normal) |
 | `--output DIR` | Output directory for reports |
-| `--timeout N` | HTTP timeout seconds (default: 10) |
-| `--threads N` | Max parallel threads |
-| `--resume` | Interrupted scan resume করুন |
+| `--timeout N` | HTTP timeout in seconds (default: 10) |
+| `--threads N` | Maximum parallel threads |
+| `--resume` | Resume an interrupted scan |
 
 ### Authentication
 
-| Flag | বিবরণ |
-|------|-------|
+| Flag | Description |
+|------|-------------|
 | `--login-url URL` | Login page URL |
 | `--login-user USER` | Username |
 | `--login-pass PASS` | Password |
 
-### Report ও Output
+### Reports & Output
 
-| Flag | বিবরণ |
-|------|-------|
-| `--html` | HTML রিপোর্ট |
-| `--pdf` | PDF রিপোর্ট (weasyprint লাগবে) |
-| `--burp` | Burp Suite XML export |
+| Flag | Description |
+|------|-------------|
+| `--html` | Generate HTML executive report |
+| `--pdf` | Generate PDF report (requires weasyprint) |
+| `--burp` | Export Burp Suite XML |
 | `--compliance` | OWASP Top 10 + PCI-DSS compliance HTML |
-| `--attack-graph` | AI Attack Path Graph HTML |
+| `--attack-graph` | Interactive Attack Path Graph HTML |
 
-### Alert ও Notification
+### Alerts & Notifications
 
-| Flag | বিবরণ |
-|------|-------|
+| Flag | Description |
+|------|-------------|
 | `--alert TOKEN:CHAT_ID` | Telegram alert |
 | `--slack WEBHOOK_URL` | Slack notification |
 | `--webhook URL` | Custom webhook (JSON POST) |
 
 ### Scan Control
 
-| Flag | বিবরণ |
-|------|-------|
-| `--no-nuclei` | Nuclei scan skip |
-| `--no-services` | Port scan skip |
-| `--no-smuggling` | HTTP Smuggling skip |
-| `--no-websocket` | WebSocket test skip |
+| Flag | Description |
+|------|-------------|
+| `--no-nuclei` | Skip Nuclei scan |
+| `--no-services` | Skip port scan |
+| `--no-smuggling` | Skip HTTP Request Smuggling |
+| `--no-websocket` | Skip WebSocket tests |
 
-### v15.0 নতুন Flags
+### v15.0 New Flags
 
-| Flag | বিবরণ |
-|------|-------|
-| `--passive` | Passive recon mode |
-| `--attack-graph` | Attack Path Graph তৈরি |
+| Flag | Description |
+|------|-------------|
+| `--passive` | Passive recon mode only |
+| `--attack-graph` | Generate Attack Path Graph |
 | `--cred-stuff` | Credential stuffing simulation |
-| `--spray` | Password spraying simulation |
+| `--spray-attack` | Password spraying simulation |
 | `--spray-user-list FILE` | Username list for spraying |
 
 ### History
 
-| Flag | বিবরণ |
-|------|-------|
-| `--history` | Past scan history দেখান |
+| Flag | Description |
+|------|-------------|
+| `--history` | Show past scan history |
 
 ---
 
-## Module তালিকা
+## Module List
 
 ### Phase 0–8 — Core Modules (1–124)
 
 | Range | Category |
 |-------|----------|
 | 1–10 | DNS, Subdomain, Port, Tech fingerprint, HTTP Headers, SSL/TLS, WHOIS, Robots |
-| 11–20 | Auth, Session, Cookie, CSRF, JWT, Login brute |
+| 11–20 | Auth, Session, Cookie, CSRF, JWT, Login brute force |
 | 21–35 | SQLi (GET/POST/Blind/Error), XSS (Reflected/Stored/DOM), CMDi, SSTI, XXE |
-| 36–50 | IDOR, Path Traversal, LFI, Auth bypass, Priv escalation |
-| 51–65 | Sensitive files, API keys, .env, Backup, Source code |
+| 36–50 | IDOR, Path Traversal, LFI, Auth bypass, Privilege escalation |
+| 51–65 | Sensitive files, API keys, .env, Backup, Source code exposure |
 | 66–80 | SSRF, Open redirect, CORS, Clickjacking, Security headers |
-| 81–97 | GraphQL basic, Admin panels, WAF detection, API, Nuclei, Exec report |
+| 81–97 | GraphQL basic, Admin panels, WAF detection, API, Nuclei, Executive report |
 | 98–107 | Nuclei, Authenticated scan, LDAP, XPath, RFI, Session fixation, Git/SVN, ENV, Source map, SOAP |
 | 108–117 | Exposed services (FTP/SSH/Telnet/SMTP/RDP/MongoDB/Redis/Elasticsearch/etc.) |
 | 118–124 | CSP analysis, Null byte, Business logic, JSON inject, API version, Unicode, Windows path |
 
 ### Phase 9d — v15.0 Modules (125–144)
 
-| Module | নাম | CVSS | Severity |
-|--------|-----|------|----------|
+| Module | Name | CVSS | Severity |
+|--------|------|------|----------|
 | **125** | HTTP Request Smuggling (CL.TE · TE.CL · TE.TE) | 9.0 | Critical |
 | **126** | Cache Poisoning / Web Cache Deception | 8.1 | High |
 | **127** | WebSocket Security (CSWSH · Injection · Hijacking) | 8.0 | High |
@@ -158,7 +158,7 @@ python3 webscan_pro.py https://target.com --passive
 | **135** | Cloud Storage Misconfiguration (S3 · GCS · Azure Blob) | 9.8 | Critical |
 | **136** | AWS IMDSv1 SSRF Chain (EC2 Metadata Credentials) | 10.0 | Critical |
 | **137** | Certificate Transparency Recon (crt.sh passive subdomain) | 5.3 | Info |
-| **138** | GraphQL Deep (Batching DoS · Introspection · Field Suggest) | 8.5 | High |
+| **138** | GraphQL Deep Scan (Batching DoS · Introspection · Field Suggest) | 8.5 | High |
 | **139** | Deserialization Detection (Java · PHP · Python Pickle · Ruby Marshal) | 9.8 | Critical |
 | **140** | Advanced SSTI (Jinja2 · Twig · Freemarker · Smarty · Velocity · ERB) | 9.8 | Critical |
 | **141** | DOM Clobbering | 6.1 | Medium |
@@ -170,55 +170,58 @@ python3 webscan_pro.py https://target.com --passive
 
 ## Professional Intelligence Features
 
-### Attack Path Graph (`--attack-graph`)
-Scan শেষে interactive HTML graph তৈরি হয় (vis-network library):
-- Vulnerability node থেকে Impact node পর্যন্ত chain দেখায়
-- Critical vulnerability লাল রঙে হাইলাইট
-- Node click করলে details দেখা যায়
-- Browser-এ open করে zoom/pan করা যায়
+### Attack Path Graph
+An interactive HTML visualization is auto-generated after every scan using the vis-network library:
+- Shows exploit chains from vulnerability node to impact node
+- Critical vulnerabilities highlighted in red
+- Click any node to view full details
+- Fully zoomable and pannable in any browser
 
 ```bash
-python3 webscan_pro.py https://target.com --attack-graph
-# Output: webscanpro_TIMESTAMP_attack_graph.html
+python3 webscan_pro.py https://target.com
+# Output: webscanpro_TIMESTAMP_attack_graph.html (auto-generated)
 ```
 
 ### Credential Stuffing (`--cred-stuff`)
-25টি সবচেয়ে বেশি leaked credential pair দিয়ে login endpoint test।
-Rate limit detect করলে automatically stop।
+Tests login endpoints against 25 of the most commonly leaked credential pairs.
+Automatically stops if rate limiting is detected.
 
-### Password Spraying (`--spray`)
-Common passwords দিয়ে discovered usernames-এর বিরুদ্ধে spray।
-Account lockout avoid করতে per-user limit মেনে চলে।
+### Password Spraying (`--spray-attack`)
+Sprays common passwords against all discovered usernames.
+Respects per-user limits to avoid account lockout.
 
-### Compliance Report (`--compliance`)
-OWASP Top 10 2021 এবং PCI-DSS requirements-এর বিরুদ্ধে HTML রিপোর্ট।
+### Compliance Report
+OWASP Top 10 2021 and PCI-DSS requirements mapped to findings with pass/fail status.
+Auto-generated on every scan — no flags required.
 
-### Scan History (`--history`)
-SQLite database (`~/.webscan_history.db`) তে সব past scan সংরক্ষিত।
+### Scan History
+All past scans are stored in a SQLite database at `~/.webscan_history.db`.
 
 ---
 
 ## Speed Modes
 
-| Mode | বিবরণ | কখন ব্যবহার |
-|------|-------|------------|
-| `fast` | Critical checks, কম timeout | Quick check, CTF |
-| `normal` | সব module, balanced | General use (default) |
-| `stealth` | ধীরে, User-Agent rotate, random delay | Production scan |
-| `thorough` | Maximum depth, সব payload | Full pentest |
+| Mode | Description | Best For |
+|------|-------------|----------|
+| `fast` | Critical checks only, short timeout | Quick recon, CTF |
+| `normal` | All modules, balanced speed | General use (default) |
+| `stealth` | Slow, rotating User-Agent, random delays | Production scanning |
+| `thorough` | Maximum depth, all payloads | Full penetration test |
 
 ---
 
-## রিপোর্ট ধরন
+## Report Types
 
 ```
 ./reports/
-├── webscanpro_TIMESTAMP_report.html      # Main report
-├── webscanpro_TIMESTAMP_executive.html   # Executive summary
-├── webscanpro_TIMESTAMP_compliance.html  # OWASP + PCI-DSS
-├── webscanpro_TIMESTAMP_attack_graph.html # Attack path graph
-└── webscanpro_TIMESTAMP_report.pdf       # PDF (optional)
+├── webscanpro_TIMESTAMP_report.html       # Main technical report
+├── webscanpro_TIMESTAMP_executive.html    # Executive summary
+├── webscanpro_TIMESTAMP_compliance.html   # OWASP + PCI-DSS compliance
+├── webscanpro_TIMESTAMP_attack_graph.html # Interactive attack path graph
+└── webscanpro_TIMESTAMP_report.pdf        # PDF export (optional)
 ```
+
+All reports are **auto-generated** on every scan. No extra flags needed.
 
 ---
 
@@ -241,30 +244,30 @@ python3 webscan_pro.py https://target.com \
 python3 webscan_pro.py https://target.com \
   --webhook "https://your-server.com/notify"
 ```
-JSON POST পাঠাবে সব critical/high findings নিয়ে।
+Sends a JSON POST with all critical and high severity findings.
 
 ---
 
 ## OWASP Top 10 2021 Coverage
 
-| # | Category | Covered |
-|---|----------|---------|
-| A01 | Broken Access Control | IDOR, Path Traversal, WebSocket, SubTK |
-| A02 | Cryptographic Failures | SSL/TLS, JWT Confusion, Sensitive Data |
+| # | Category | Modules Covered |
+|---|----------|-----------------|
+| A01 | Broken Access Control | IDOR, Path Traversal, WebSocket, Subdomain Takeover |
+| A02 | Cryptographic Failures | SSL/TLS, JWT Algorithm Confusion, Sensitive Data Exposure |
 | A03 | Injection | SQLi, XSS, SSTI, LDAP, XPath, Deserialization, GraphQL |
-| A04 | Insecure Design | Race Condition, Business Logic, Mass Assignment |
-| A05 | Security Misconfiguration | CORS, Headers, Cloud Storage, HTTP/2, Cache |
+| A04 | Insecure Design | Race Condition, Business Logic, Mass Assignment, ReDoS |
+| A05 | Security Misconfiguration | CORS, Headers, Cloud Storage, HTTP/2, Cache Poisoning |
 | A06 | Vulnerable Components | CVE checks, Nuclei, ReDoS |
-| A07 | Auth Failures | OAuth, JWT, Session Fixation, Credential Stuffing |
-| A08 | Software Integrity | Deserialization, Pickle, Java gadget chains |
-| A09 | Logging Failures | Error disclosure, Debug info |
-| A10 | SSRF | SSRF, AWS IMDS, Cloud Metadata Chain |
+| A07 | Auth & Identity Failures | OAuth, JWT, Session Fixation, Credential Stuffing |
+| A08 | Software & Data Integrity | Deserialization, Pickle, Java gadget chains |
+| A09 | Logging & Monitoring Failures | Error disclosure, Debug info exposure |
+| A10 | SSRF | SSRF, AWS IMDS Chain, Cloud Metadata |
 
 ---
 
 ## Finding Structure
 
-প্রতিটি finding-এ থাকে:
+Every finding contains the following fields:
 
 ```json
 {
@@ -273,11 +276,11 @@ JSON POST পাঠাবে সব critical/high findings নিয়ে।
   "url":         "https://target.com/page?id=1",
   "param":       "id",
   "payload":     "' OR '1'='1",
-  "detail":      "বিস্তারিত বিবরণ...",
+  "detail":      "Detailed description of the vulnerability...",
   "owasp":       "A03:2021 — Injection",
   "cwe":         "CWE-89",
   "cvss":        9.8,
-  "remediation": "কীভাবে ঠিক করবেন..."
+  "remediation": "Use parameterized queries or prepared statements..."
 }
 ```
 
@@ -285,63 +288,60 @@ JSON POST পাঠাবে সব critical/high findings নিয়ে।
 
 ## Severity Scale
 
-| Severity | CVSS | উদাহরণ |
-|----------|------|--------|
-| Critical | 9.0–10.0 | SQLi RCE, JWT forgery, AWS IMDS, Cloud bucket |
+| Severity | CVSS Range | Examples |
+|----------|-----------|---------|
+| Critical | 9.0–10.0 | SQLi RCE, JWT forgery, AWS IMDS, Cloud bucket exposed |
 | High | 7.0–8.9 | XSS, SSRF, Race condition, WebSocket CSWSH |
 | Medium | 4.0–6.9 | CSRF, HPP, Email injection, DOM Clobbering |
-| Low | 1.0–3.9 | Information disclosure, missing headers |
-| Info | 0.0 | Technology detection, passive findings |
+| Low | 1.0–3.9 | Information disclosure, missing security headers |
+| Info | 0.0 | Technology detection, passive recon findings |
 
 ---
 
-## উদাহরণ Workflow
+## Example Workflows
 
 ```bash
-# ১. Bug bounty recon
+# 1. Bug bounty recon
 python3 webscan_pro.py https://target.com \
   --passive --speed normal --output ./bugbounty
 
-# ২. Full pentest
+# 2. Full penetration test
 python3 webscan_pro.py https://target.com \
   --speed thorough \
   --output ./reports \
-  --compliance \
-  --attack-graph \
   --html
 
-# ৩. Stealth + Telegram alert
+# 3. Stealth scan with Telegram alerts
 python3 webscan_pro.py https://target.com \
   --speed stealth \
   --alert "BOT_TOKEN:CHAT_ID"
 
-# ৪. Cloud security focus
+# 4. Cloud security audit
 python3 webscan_pro.py https://target.com \
   --speed thorough \
   --passive \
-  --attack-graph \
   --output ./cloud-audit
 
-# ৫. Auth testing
+# 5. Authentication testing
 python3 webscan_pro.py https://target.com \
   --login-url https://target.com/login \
   --login-user admin --login-pass admin123 \
-  --cred-stuff --spray
+  --cred-stuff --spray-attack
 ```
 
 ---
 
 ## Version History
 
-| Version | Modules | নতুন কী |
-|---------|---------|---------|
+| Version | Modules | What's New |
+|---------|---------|-----------|
 | v1.0 | 20 | Basic XSS, SQLi, Headers |
 | v5.0 | 50 | Auth, CSRF, CORS, SSL |
 | v10.0 | 80 | GraphQL, JWT, SSRF |
 | v12.0 | 92 | Attack chain, Executive report |
 | v13.0 | 97 | Telegram, Slack, PDF, Burp XML |
 | v14.0 | 124 | Nuclei, Auth scan, Services, Compliance, Webhook, SQLite |
-| **v15.0** | **144** | Smuggling, Cache Poison, WebSocket, Race Condition, Mass Assign, HPP, OAuth/OIDC, JWT Confusion, SubTK, Cloud Storage, AWS IMDS, CT Recon, GraphQL Deep, Deserialization, SSTI Adv, DOM Clobber, ReDoS, HTTP/2, Passive Recon, Attack Graph |
+| **v15.0** | **144** | Smuggling, Cache Poison, WebSocket, Race Condition, Mass Assignment, HPP, OAuth/OIDC, JWT Confusion, Subdomain Takeover, Cloud Storage, AWS IMDS, CT Recon, GraphQL Deep, Deserialization, Advanced SSTI, DOM Clobbering, ReDoS, HTTP/2, Passive Recon, Attack Graph |
 
 ---
 
@@ -359,6 +359,7 @@ python3 webscan_pro.py https://target.com \
 
 ## Legal Notice
 
-> এই টুল শুধুমাত্র **authorized** web application-এ ব্যবহারের জন্য।
-> Unauthorized scanning বেআইনি এবং শাস্তিযোগ্য অপরাধ।
-> Bug bounty / pentest scope-এর বাইরে ব্যবহার করবেন না।
+> This tool is intended **only** for authorized web application security testing.
+> Unauthorized scanning of systems you do not own or have explicit written permission to test
+> is **illegal** and may result in criminal prosecution.
+> Always stay within the scope of your bug bounty program or penetration testing agreement.
