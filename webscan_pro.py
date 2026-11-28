@@ -1886,7 +1886,10 @@ def backup_file_scan(url):
                 _is_binary_ext = any(path.endswith(e) for e in [".zip",".tar",".tar.gz",".tgz",".gz",".sql",".db",".sqlite",".sqlite3"])
                 _is_code = any(path.endswith(e) for e in [".php",".py",".rb",".js",".json",".yml",".yaml",".xml",".properties",".env",".bak",".old",".sql",".config",".conf"])
                 _is_text_config = any(x in _low for x in ["password","secret","token","apikey","api_key","database","db_pass","db_name","key =","key=","pwd","username","user =","host =","port ="])
-                if _is_binary_ext or (_is_code and not _is_html_page) or _is_text_config:
+                # If response is HTML, it's a soft-404 false positive for binary/backup files
+                if _is_html_page and not _is_text_config:
+                    return None
+                if (_is_binary_ext and not _is_html_page) or (_is_code and not _is_html_page) or _is_text_config:
                     severity = "Critical" if any(x in _low for x in ["password","secret","token","apikey","api_key","db_pass","private_key","aws_secret"]) else "High"
                     return (path, r.status_code, len(r.text), severity)
                 elif not _is_html_page:
@@ -3313,24 +3316,23 @@ def dir_bruteforce(url, wordlist=None):
     except Exception:
         pass
 
-    def _is_false_positive(r):
+    def _is_false_positive(r, ext=""):
         """Return True if response looks like a soft-404 homepage redirect."""
-        if not _soft404:
-            return False
         body_low = r.text[:500].lower()
-        # HTML homepage returned for missing URL → false positive
-        if "<!doctype" in body_low or "<html" in body_low:
-            # Allow through ONLY if content contains credential/config markers
-            sensitive = any(x in r.text.lower() for x in [
-                "password", "passwd", "secret", "token", "api_key", "apikey",
-                "db_pass", "database", "private_key", "aws_secret", "insert into",
-                "create table", "mysql_", "pg_", "[database]", "sqlstate"
-            ])
-            return not sensitive
-        # Size very close to baseline → likely same page
-        size_diff = abs(len(r.content) - _baseline_size) if _baseline_size else 9999
-        if size_diff < 200:
+        sensitive = any(x in r.text.lower() for x in [
+            "password", "passwd", "secret", "token", "api_key", "apikey",
+            "db_pass", "database", "private_key", "aws_secret", "insert into",
+            "create table", "mysql_", "pg_", "[database]", "sqlstate"
+        ])
+        # HTML response for a binary/backup extension → always false positive
+        _is_html = "<!doctype" in body_low or "<html" in body_low
+        if _is_html and not sensitive:
             return True
+        # Soft-404 size match
+        if _soft404 and _baseline_size:
+            size_diff = abs(len(r.content) - _baseline_size)
+            if size_diff < 200:
+                return True
         return False
 
     def _check(word, ext):
@@ -3338,7 +3340,7 @@ def dir_bruteforce(url, wordlist=None):
         try:
             r = rget(target, allow_redirects=False, timeout=6)
             if r.status_code in (200, 204, 301, 302, 403):
-                if r.status_code == 200 and _is_false_positive(r):
+                if r.status_code == 200 and _is_false_positive(r, ext):
                     return None   # soft-404 false positive — skip
                 return (target, r.status_code, len(r.content), word, ext)
         except Exception:
